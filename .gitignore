@@ -6,3 +6,7 @@ __pycache__
 
 # data files
 data/
+
+# figures
+*.png
+*.pdf
