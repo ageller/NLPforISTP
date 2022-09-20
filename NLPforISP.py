@@ -70,7 +70,7 @@ def getStringOfWords(df, column_number):
 	'''
 
 	# convert the answers column to a list
-	list_of_answers = df[df.columns[1]].tolist() 
+	list_of_answers = df[df.columns[column_number]].tolist() 
 
 	# convert that list to a long string
 	string_of_answers = ''.join(str(list_of_answers))
@@ -169,7 +169,7 @@ def getBagOfWords(df, column_number,  additional_stopwords = [''], wlen = 3, ste
 	'''
 
 	# convert the answers column to a list
-	list_of_answers = df[df.columns[1]].tolist() 
+	list_of_answers = df[df.columns[column_number]].tolist() 
 
 	# preprocess each answer separately
 	processed_answers = []
@@ -227,6 +227,8 @@ def runLDATopicModel(df, column_number, num_topics, passes = 20, workers = 1, ad
 
 	If num_topics is provides as a list of numbers, the output LDA model, perplexity and coherence values will also be lists (with each entry corresponding to the 
 	number of topics at that index).
+
+	The coherence measure uses multiple techniques, and is output as a list of [u_mass, c_v, c_uci, c_npmi] for each num_topics value.
 
 
 	arguments
@@ -303,22 +305,36 @@ def runLDATopicModel(df, column_number, num_topics, passes = 20, workers = 1, ad
 		# a measure of how good the model is. lower the better.
 		perplexity = lda_model.log_perplexity(bow_corpus)  
 
-		# Compute Coherence Score
-		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, dictionary = dictionary, coherence = 'c_v')
-		coherence = coherence_model.get_coherence()
+		# Compute Coherence Score using all the different algorithms
+		# 'u_mass'
+		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = 'u_mass', processes = workers)
+		u_mass = coherence_model.get_coherence()
 
-		print(f'for {n} topics, perplexity = {perplexity} and coherence = {coherence}')
+		# 'c_v'
+		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = 'c_v', processes = workers)
+		c_v = coherence_model.get_coherence()
+
+		# 'c_uci'
+		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = 'c_uci', processes = workers)
+		c_uci = coherence_model.get_coherence()
+
+		# 'c_npmi'
+		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = 'c_npmi', processes = workers)
+		c_npmi = coherence_model.get_coherence()
+
 
 		models.append(lda_model)
 		p.append(perplexity)
-		c.append(coherence)
+		c.append([u_mass, c_v, c_uci, c_npmi])
+
+		print(f'for {n} topics, perplexity = {perplexity:.3f} and coherence = [{u_mass:.3f}, {c_v:.3f}, {c_uci:.3f}, {c_npmi:.3f}]')
 
 	if (len(num_topics) == 1):
 		models = models[0]
 		p = p[0]
 		c = c[0]
 
-	return dictionary, bow_corpus, models, p, c
+	return dictionary, bow_corpus, models, p, np.array(c)
 
 
 def printTopicModel(lda_model):
@@ -347,12 +363,17 @@ def plotLDAMetrics(num_topics, coherence, perplexity, best_index = None):
 
 	f, (ax1, ax2) = plt.subplots(2,1, figsize = (5, 5), sharex = True)
 
-	ax1.plot(num_topics, coherence)
+	cvals = ['u_mass', 'c_v', 'c_uci', 'c_npmi']
+	for i,c in enumerate(cvals):
+		cc = coherence[:,i]
+		cn = (cc - min(cc))/(max(cc) - min(cc))
+		ax1.plot(num_topics, cn, label = c)
+	ax1.legend()
 	ax2.plot(num_topics, perplexity)
 
 	ax2.set_xlabel('Number of Topics')
-	ax1.set_ylabel('Coherence')
-	ax2.set_ylabel('Perplexity')
+	ax1.set_ylabel('Normalized Coherence')
+	ax2.set_ylabel('log(Perplexity)')
 
 	# choose the best model and plot a vertical line
 	if (best_index is not None):
