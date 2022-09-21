@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import gaussian_kde
 
 import unicodedata
 import re
@@ -10,12 +11,15 @@ from nltk.corpus import stopwords
 
 import gensim
 
+import spacy
+
 '''
 useful tutorials:
 - n-grams using NLTK : https://towardsdatascience.com/from-dataframe-to-n-grams-e34e29df3460
-- a good example notebook : https://github.com/priya-dwivedi/Deep-Learning/blob/master/topic_modeling/LDA_Newsgroup.ipynb
-- NLTK and gensim tutorial: https://towardsdatascience.com/nlp-extracting-the-main-topics-from-your-dataset-using-lda-in-minutes-21486f5aa925
-- NLTK and gensim tutorial : https://towardsdatascience.com/introduction-to-nlp-part-5b-unsupervised-topic-model-in-python-ab04c186f295
+- a good example notebook for topic modeling : https://github.com/priya-dwivedi/Deep-Learning/blob/master/topic_modeling/LDA_Newsgroup.ipynb
+- NLTK and gensim tutorial on topic modeling : https://towardsdatascience.com/nlp-extracting-the-main-topics-from-your-dataset-using-lda-in-minutes-21486f5aa925
+- NLTK and gensim tutorial on topic modeling : https://towardsdatascience.com/introduction-to-nlp-part-5b-unsupervised-topic-model-in-python-ab04c186f295
+- text summarization using spacy : https://medium.com/analytics-vidhya/text-summarization-using-spacy-ca4867c6b744 and notebook : https://github.com/kamal2230/text-summarization/blob/master/Summarisation_using_spaCy.ipynb
 '''
 
 def preprocess(text, additional_stopwords = [''], wlen = 4, stem = True):
@@ -60,13 +64,13 @@ def preprocess(text, additional_stopwords = [''], wlen = 4, stem = True):
 	
 	return processed
 
-def getStringOfWords(df, column_number):
+def getStringOfWords(df, column_number = 1):
 	'''
 	returns a string of words from a dataframe that contains a column filled with rows of answers for a given question
 
 	arguments
 	df : (pandas DataFrame, required) data set containing rows of responses to one (or more) question(s)
-	column_number : (integer, required) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
+	column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
 	'''
 
 	# convert the answers column to a list
@@ -138,13 +142,13 @@ def plotNgrams(ngrams, N, color = 'gray', ax = None):
 	ax.set_yticks(ind)
 	_ = ax.set_yticklabels(ngrams_plot.index.str.join(sep=' '))
 	_ = ax.set_title(str(N) + ' Most Frequently Occuring N-grams')
-	_ = ax.set_xlabel('# of Occurances')
+	_ = ax.set_xlabel('# of Occurences')
 
 	if (ax is None):
 		return (f,ax)
 
 
-def getBagOfWords(df, column_number,  additional_stopwords = [''], wlen = 3, stem = True, no_below = 1, no_above = 1, keep_n = int(1e10)):
+def getBagOfWords(df, column_number = 1,  additional_stopwords = [''], wlen = 3, stem = True, no_below = 1, no_above = 1, keep_n = int(1e10)):
 	'''
 	returns a "bag of words" the "dictionary" and a list of processed answers from the input dataframe that contains a column filled 
 	with rows of answers for a given question.  Additional arguments allow for optional filtering of the data (as explained below).
@@ -159,7 +163,7 @@ def getBagOfWords(df, column_number,  additional_stopwords = [''], wlen = 3, ste
 
 	arguments
 	df : (pandas DataFrame, required) ata set containing rows of responses to one (or more) question(s)
-	column_number : (integer, required) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
+	column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
 	additional_stopwords : (list of strings, optional) a list of strings containing words that should be removed from text, other than the standard stopwords
 	wlen : (integer, optional) minimum word length (any words < wlen will be excluded)
 	stem : (boolean, optional) whether to apply stemming
@@ -218,7 +222,7 @@ def printBagOfWords(dictionary, bow_corpus, index):
 	for i in range(len(bow_answer)):
 		print(f'Word {bow_answer[i][0]} ("{dictionary[bow_answer[i][0]]}") appears {bow_answer[i][1]} time.')
 
-def runLDATopicModel(df, column_number, num_topics, passes = 20, workers = 1, additional_stopwords = [''], wlen = 3, stem = True, no_below = 1, no_above = 1, keep_n = int(1e10)):
+def runLDATopicModel(df, column_number = 1, num_topics = 3, passes = 20, workers = 1, additional_stopwords = [''], wlen = 3, stem = True, no_below = 1, no_above = 1, keep_n = int(1e10), random_state = None):
 	'''
 
 	Run NLTK + gensim, Latent Dirichlet Allocation (LDA) algorithm, which uses unsupervised learning to extract the main topics 
@@ -233,8 +237,8 @@ def runLDATopicModel(df, column_number, num_topics, passes = 20, workers = 1, ad
 
 	arguments
 	df : (pandas DataFrame, required) ata set containing rows of responses to one (or more) question(s)
-	column_number : (integer, required) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
-	num_topics : (integer or list of integers, required) number(s) of topics to search for
+	column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
+	num_topics : (integer or list of integers, optional) number(s) of topics to search for
 	passes : (integer, optional) number of passes through the corpus during training
 	workers : (integer, optional) number of worker processes to be used for parallelization.  The maximum value would be the number of real cores (not hyperthreads) - 1. 
 
@@ -246,7 +250,7 @@ def runLDATopicModel(df, column_number, num_topics, passes = 20, workers = 1, ad
 	no_above : (float, optional) filtering to remove words that appear in more than no_above (fraction) of all documents (tpyical value may be 1; don't use)
 	keep_n : (integer, optional) number of words to keep (typical value may be 1e5)
 
-
+	random_state : ({np.random.RandomState, int}, optional) Either a randomState object or a seed to generate one. Useful for reproducibility. Note that results can still vary due to non-determinism in OS scheduling of the worker processes.
 
 
 	-----
@@ -288,7 +292,12 @@ def runLDATopicModel(df, column_number, num_topics, passes = 20, workers = 1, ad
 
 	models = []
 	p = []
-	c = []
+	cvals = ['u_mass', 'c_v', 'c_uci', 'c_npmi']
+	c = {}
+	for cv in cvals:
+		c[cv] = []
+
+	print('\n')
 	for n in num_topics:
 
 		# Train your lda model using gensim.models.LdaMulticore 
@@ -297,7 +306,8 @@ def runLDATopicModel(df, column_number, num_topics, passes = 20, workers = 1, ad
 			num_topics = n, 
 			id2word = dictionary,  
 			passes = passes,
-			workers = workers
+			workers = workers,
+			random_state = random_state
 		)
 
 
@@ -306,70 +316,63 @@ def runLDATopicModel(df, column_number, num_topics, passes = 20, workers = 1, ad
 		perplexity = lda_model.log_perplexity(bow_corpus)  
 
 		# Compute Coherence Score using all the different algorithms
-		# 'u_mass'
-		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = 'u_mass', processes = workers)
-		u_mass = coherence_model.get_coherence()
-
-		# 'c_v'
-		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = 'c_v', processes = workers)
-		c_v = coherence_model.get_coherence()
-
-		# 'c_uci'
-		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = 'c_uci', processes = workers)
-		c_uci = coherence_model.get_coherence()
-
-		# 'c_npmi'
-		coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = 'c_npmi', processes = workers)
-		c_npmi = coherence_model.get_coherence()
-
+		for cv in cvals:
+			coherence_model = gensim.models.coherencemodel.CoherenceModel(model = lda_model, texts = processed_answers, corpus = bow_corpus, dictionary = dictionary, coherence = cv, processes = workers)
+			c[cv].append(coherence_model.get_coherence())
 
 		models.append(lda_model)
 		p.append(perplexity)
-		c.append([u_mass, c_v, c_uci, c_npmi])
 
-		print(f'for {n} topics, perplexity = {perplexity:.3f} and coherence = [{u_mass:.3f}, {c_v:.3f}, {c_uci:.3f}, {c_npmi:.3f}]')
+		cprint = ', '.join([f'{key}: {c[key][-1]:.3f}' for key in c.keys()])
+		print(f'for {n} topics, perplexity = {perplexity:.3f} and coherence = {{{cprint}}}')
 
 	if (len(num_topics) == 1):
 		models = models[0]
 		p = p[0]
-		c = c[0]
+		for key in c.keys():
+			c[key] = c[key][0]
 
-	return dictionary, bow_corpus, models, p, np.array(c)
+	print('\n')
+	return dictionary, bow_corpus, models, p, c
 
 
-def printTopicModel(lda_model):
+def printLDATopicModel(lda_model):
 	'''
 	For each topic, print the words occuring in that topic and its relative weight.
 
 	arguments
-	lda_model : (gensim ldamodel object, required) the LDA model object outputted by runTopicModel
+	lda_model : (gensim ldamodel object, required) the LDA model object outputted by runLDATopicModel
 	'''
 
-	for idx, topic in lda_model.print_topics():
-		print(f'Topic: {idx}\nWords: {topic}\n')
+	for i, topic in lda_model.print_topics():
+		print(f'********** Topic {i} **********')
+		print(topic,'\n')
 
 
-def plotLDAMetrics(num_topics, coherence, perplexity, best_index = None):
+def plotLDAMetrics(num_topics, coherence, perplexity, best_index = None, colors = [None]):
 	'''
 	generate line plots showing the coherence (top) and perplexity (bottom) scores for each model as a function of num_topics.
 	returns the plot and axis objects
 
 	arguments
 	num_topcs : (list of integers, required) contains the numbers of topics with corresponding LDA models
-	coherence : (list of floats, required) the coherence scores for each model
+	coherence : (dict of lists, required) the coherence scores for each model where each dict entry has the type of coherence as the key
 	perplexity : (list of floats, required) the perplexity scores for each model
 	best_index : (integer, optional) the index of the best model (for a vertical dashed line)
+	colors : (list, optional) define the colors for the plot; must be same length as the number of coherence values
 	'''
+
+	if (colors[0] is None):
+		colors = ['C' + str(i) for i in range(len(coherence.keys()))]
 
 	f, (ax1, ax2) = plt.subplots(2,1, figsize = (5, 5), sharex = True)
 
-	cvals = ['u_mass', 'c_v', 'c_uci', 'c_npmi']
-	for i,c in enumerate(cvals):
-		cc = coherence[:,i]
+	for i, cv in enumerate(coherence.keys()):
+		cc = coherence[cv]
 		cn = (cc - min(cc))/(max(cc) - min(cc))
-		ax1.plot(num_topics, cn, label = c)
+		ax1.plot(num_topics, cn, label = cv, color = colors[i])
 	ax1.legend()
-	ax2.plot(num_topics, perplexity)
+	ax2.plot(num_topics, perplexity, color = 'black')
 
 	ax2.set_xlabel('Number of Topics')
 	ax1.set_ylabel('Normalized Coherence')
@@ -383,3 +386,248 @@ def plotLDAMetrics(num_topics, coherence, perplexity, best_index = None):
 	plt.subplots_adjust(hspace = 0.0)
 
 	return (f, (ax1, ax2))
+
+
+def getLDAProbabilities(lda_model, bow_corpus, df, column_number = 1):
+	'''
+	Gets the probabilities for topics for each answer to a given question (as defined by the column at "column_numer" in df).  
+	Returns a pandas DataFrame containing one row per answer and columns with the answer text and probabilities that they exist in each topic,
+	and a final column with the topic at the highest probability in each row.
+
+	arguments
+	lda_model : (gensim ldamodel object, required) the LDA model object outputted by runLDATopicModel
+	bow_corpus : (gensim bag of words corpus, required)the gensim bag of words corpus, outputted by runLDATopicModel
+	df : (pandas DataFrame, required) ata set containing rows of responses to one (or more) question(s)
+	column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
+	'''
+
+	# Predict probabilities
+	predictions = lda_model.get_document_topics(bow_corpus, minimum_probability = 0.0)
+
+	# format this into a Pandas DataFrame
+	p = np.array([prediction for prediction in predictions])
+	num_topics = len(p[0])
+
+	df_p = pd.DataFrame()
+	df_p['answers'] = df[df.columns[column_number]]
+	for i in range(num_topics):
+		df_p['topic' + str(i)] = p[:,i,1]
+
+	# for each answer, get the topic at maximum probability
+	top = []
+	top_p = []
+	for index, row in df_p.iterrows():
+		sub = row['topic0':'topic' + str(num_topics - 1)]
+		imax = np.argmax(sub)
+		top.append('topic' + str(imax))
+		top_p.append(sub[imax])
+	df_p['top_topic'] = top
+	df_p['top_probability'] = top_p
+
+
+	return df_p
+
+def plotTopLDAProbabilitiesKDE(df_p, topic_names = [None], colors = [None], bw_method = None):
+	'''
+	Generates histograms of the probabilities of the top topics for each answer.  Returns the figure and axis objects from pyplot.
+
+	arguments
+	df_p : (pandas DataFrame, required) output from getLDAProbabilities, needs a column named "top_topic" that points to another column with the probability values
+	topic_names : (list, optional) define the topic names. If undefined, then the code assumes that all topics will have a name beginning with the word "topic"
+	colors : (list, optional) define the colors for the plot; must be same length as the number of topics
+	bw_method (str, scalar or callable, optional) : the method used to calculate tehe estimator bandwidth (see scipy.stats.gaussian_kde documentation)
+	'''
+
+
+	if (topic_names[0] is None):
+		topic_names = [x for x in df_p.columns.values if x.startswith('topic')]
+
+	if (colors[0] is None):
+		colors = ['C' + str(i) for i in range(len(topic_names))]
+
+	f,ax = plt.subplots()
+
+	xs = np.linspace(0, 1, 200)
+	for t,c in zip(topic_names, colors):
+		# get a list of the probabilities for the rows that have this topic as the max topic
+		df_tmp = df_p.loc[(df_p['top_topic'] == t)]
+		# ax.hist(df_p[t], label = t, density = True, bins = bins)
+		density = gaussian_kde(df_tmp[t], bw_method = bw_method)
+		ax.plot(xs, density(xs), label = t, color = c)
+		ax.fill_between(xs, density(xs), color = c, alpha = 0.3)
+
+	ax.legend()
+	ax.set_xlabel('probability')
+	ax.set_ylabel('density')
+	ax.set_xlim(0,1)
+	ax.set_ylim(bottom = 0)
+
+	return (f, ax)
+
+def printBestLDATopicSentences(df_p, dictionary, lda_model, n_answers = 10, n_sentences = 2, topic_names = [None], show_answers = False):
+	'''
+	Find the top n_answers for a given topic based on the probability score (from getLDAProbabilities).  Then find the n_sentences that have the highest weight based on the topic keyword frequencies.  Print the topic words and the most relevant sentence(s).
+
+	arguments
+	df_p : (pandas DataFrame, required) output from getLDAProbabilities, needs a column named "answers" and additional columns with the topic probability values
+	dictionary : (gensim dictionary object, required) a dictionary object as output from getBagOfWords
+	lda_model : (gensim ldamodel object, required) the LDA model object outputted by runLDATopicModel
+	n_answers : (integer, optional) number of answers to use for getting the best sentence (with the top n probabilities in that topic)
+	n_sentences : (integer, optional) number of summary sentences to print
+	topic_names : (list, optional) :define the topic names. If undefined, then the code assumes that all topics will have a name beginning with the word "topic"
+	show_answers : (boolean, options) whether to print the answer to the screen
+	'''
+
+	if (topic_names[0] is None):
+		topic_names = [x for x in df_p.columns.values if x.startswith('topic')]
+
+	print('\n')
+	for i, (tn, tw) in enumerate(zip(topic_names, lda_model.print_topics())):
+		print(f'********** {tn} **********')
+		print(tw[1],'\n')
+		indices = df_p[tn].nlargest(n_answers).index.values
+		weighted = np.empty((0,2), "object")
+		for j in indices:
+			if (show_answers):
+				print(f'topic probability = {df_p[tn][j]:.3f}')
+				print(df_p['answers'][j], '\n')
+			weighted = np.append(weighted, weightSentencesByLDATopic(df_p['answers'][j], dictionary, lda_model, i), axis = 0)
+
+		print(f'Most relevant {n_sentences} sentence(s) from the top {n_answers} answers:\n')
+		weighted_sorted = weighted[np.argsort(weighted[:, 1])[::-1]]
+		for imax in range(n_sentences):
+			print(f'Weight in topic = {weighted_sorted[imax][1]:.3f}')
+			print(weighted_sorted[imax][0],'\n')
+
+		print('\n')
+
+
+def weightSentencesByLDATopic(text, dictionary, lda_model, topic_number):
+	'''
+	Weight the sentences in a given string of text by the words that are included in the given topic from the lda_model.
+	Returns a numpy array with each entry as [sentence, weight].
+
+	arguments
+	text : (string, required) the text to be analyzed
+	dictionary : (gensim dictionary object, required) a dictionary object as output from getBagOfWords
+	lda_model : (gensim ldamodel object, required) the LDA model object outputted by runLDATopicModel
+	topic_number : (integer, required) the topic to use for weighting
+	'''
+
+	nlp = spacy.load('en_core_web_sm')
+	doc = nlp(text)
+
+	available_words = np.array(list(dictionary.items()))[:,1]
+
+	sentence_strength = {}
+	for sentence in doc.sents:
+		for word in sentence:
+			if (word.text in available_words):
+				prob = lda_model.get_term_topics(word.text)[topic_number][1]
+				if sentence in sentence_strength.keys():
+					sentence_strength[sentence] += prob
+				else:
+					sentence_strength[sentence] = prob
+
+	return np.array(list(sentence_strength.items()), dtype = "object")
+
+
+def runNLPPipeline(filename, sheet = None, column_number = 1, additional_stopwords = [''], wlen = 3, stem = True, num_topics = 3, passes = 20, workers = 1, no_below = 1, no_above = 1, keep_n = int(1e10), random_state = None, coherence_method = 'c_v', topic_names = [None], c_colors = [None], p_colors = [None], bw_method = None, n_answers = 10, n_sentences = 2, show_answers = False):
+	'''
+	Run the full NLP analysis pipeline, including ngrams and LDA topic modeling
+
+	arguments
+	filename : (string, required) path to the file that stores the data, if sheet is supplied this is assumed to be an Excel file, otherwise it is assumes to be a csv file
+	sheet : (string, optional) if supplying an Excel file, this gives the sheet name 
+	column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
+
+	additional_stopwords : (list of strings, optional) a list of strings containing words that should be removed from text, other than the standard stopwords
+	wlen : (integer, optional) minimum word length (any words < wlen will be excluded)
+	stem : (boolean, optional) whether to apply stemming
+
+	num_topics : (integer or list of integers, optional) number(s) of topics to search for in LDA topic modeling
+	passes : (integer, optional) number of passes through the corpus during training
+	workers : (integer, optional) number of worker processes to be used for parallelization.  The maximum value would be the number of real cores (not hyperthreads) - 1. 
+	random_state : ({np.random.RandomState, int}, optional) Either a randomState object or a seed to generate one. Useful for reproducibility. Note that results can still vary due to non-determinism in OS scheduling of the worker processes.
+
+	no_below : (integer, optional) filtering to remove words that apper less than no_below times (typical value may be 15)
+	no_above : (float, optional) filtering to remove words that appear in more than no_above (fraction) of all documents (tpyical value may be 1; don't use)
+	keep_n : (integer, optional) number of words to keep (typical value may be 1e5)
+
+	coherence_method : (string, optional) the coherence measure to use when selecting the best number of topics
+
+	topic_names : (list, optional) define the topic names. If undefined, then the code assumes that all topics will have a name beginning with the word "topic"
+	c_colors : (list, optional) define the colors for the coherence plot; must be same length as the number of coherence values 
+	p_colors : (list, optional) define the colors for the topic probabilities plot; must be same length as the number of topics
+	bw_method (str, scalar or callable, optional) : the method used to calculate tehe estimator bandwidth (see scipy.stats.gaussian_kde documentation)
+
+	n_answers : (integer, optional) number of answers to use for getting the best sentence (with the top n probabilities in that topic)
+	n_sentences : (integer, optional) number of summary sentences to print
+	show_answers : (boolean, options) whether to print the answer to the screen
+	'''
+
+	# read in the data
+	print(f'  -- Reading data from file: "{filename}" --')
+	if (sheet is None):
+		df = pd.read_csv(filename)
+		sheet = 'plot' # for naming the figures
+	else:
+		print(f'  -- Using sheet: "{sheet}"" --')
+		df = pd.read_excel(filename, sheet)
+
+
+	# get the bigrams and trigrams and create bar charts of the results
+	print(f'  -- Finding bigrams and trigrams --')
+	# get a string of the words contained in all the answers from this DataFrame
+	string_of_answers = getStringOfWords(df, column_number)
+
+	# get the bigrams and trigrams
+	bigrams = getNgrams(string_of_answers, 2, additional_stopwords = additional_stopwords, wlen = wlen, stem = stem)
+	trigrams = getNgrams(string_of_answers, 3, additional_stopwords = additional_stopwords, wlen = wlen, stem = stem)
+
+	# create a plot of the bigrams and trigrams
+	fname = 'ngrams_' + sheet.replace(' ','') + '.png'
+	print(f'  -- Saving ngrams figure to: "{fname}" --')
+	f, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 8))
+	N = 20
+	plotNgrams(bigrams, N, ax = ax1)
+	plotNgrams(trigrams, N, ax = ax2)
+	_ = ax1.set_title(str(N) + ' Most Frequently Occuring Bigrams')
+	_ = ax2.set_title(str(N) + ' Most Frequently Occuring Trigrams')
+	plt.subplots_adjust(wspace = 0.6, left = 0.15, right = 0.99, top = 0.95, bottom = 0.07)
+	f.savefig(fname, bbox_inches = 'tight')
+
+	# run the topic model
+	print('  -- Running LDA topic model --')
+	num_topics = np.arange(10) + 1
+	dictionary, bow_corpus, lda_model, perplexity, coherence = runLDATopicModel(df, column_number = column_number, num_topics = num_topics, passes = passes, workers = workers, additional_stopwords = additional_stopwords, wlen = wlen, stem = stem, no_below = no_below, no_above = no_above, keep_n = keep_n, random_state = random_state)
+
+	# choose the index of the best model by selecting the maximum coherence score
+	best_index = np.argmax(coherence[coherence_method])
+	
+	print(f'  -- The best model has {num_topics[best_index]} topics, using the "{coherence_method}" coherence method')
+
+	# plot the results
+	# higher coherence is better
+	# lower perplexity is better
+	fname = 'metrics_' + sheet.replace(' ','') + '.png'
+	print(f'  -- Saving LDA metrics plot to: "{fname}" --')
+	f, (ax1, ax2) = plotLDAMetrics(num_topics, coherence, perplexity, best_index, colors = c_colors)
+	f.savefig(fname, bbox_inches = 'tight')
+
+	# calculate the probabilities for each answer being in each topic
+	print(f'  -- Calculating probabilities of each topic for each answer --')
+	df_p = getLDAProbabilities(lda_model[best_index], bow_corpus, df, column_number = column_number)
+
+	# plot a KDE of the probability distributions for each topic
+	fname = 'probabilities_' + sheet.replace(' ','') + '.png'
+	print(f'  -- Saving plot of KDE of top topic probabilities to: "{fname}" --')
+	f, ax = plotTopLDAProbabilitiesKDE(df_p, topic_names = topic_names, bw_method = bw_method, colors = p_colors)
+	f.savefig(fname, bbox_inches = 'tight')
+
+	# print the answers that have the maximum probability for each topic
+	print(f'  -- Printing summary information for each topic --')
+	printBestLDATopicSentences(df_p, dictionary, lda_model[best_index], n_answers = n_answers, n_sentences = n_sentences, topic_names = topic_names, show_answers = show_answers)
+
+
+	return (dictionary, bow_corpus, lda_model, perplexity, coherence, df_p, best_index)
