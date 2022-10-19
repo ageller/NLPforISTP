@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 from scipy.stats import gaussian_kde
 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+from kneed import KneeLocator
+
 import unicodedata
 import re
 
@@ -499,7 +503,15 @@ def printBestLDATopicSentences(df_p, dictionary, lda_model, n_answers = 10, n_se
 			if (show_answers):
 				print(f'topic probability = {df_tmp[tn][j]:.3f}')
 				print(df_tmp['answers'][j], '\n')
-			weighted = np.append(weighted, weightSentencesByLDATopic(df_tmp['answers'][j], dictionary, lda_model, i), axis = 0)
+			txt = df_tmp['answers'][j]
+
+			# I don't know why this sometimes returns a Series, but this should hopefully fix it if/when that happens
+			if isinstance(txt, (pd.DataFrame, pd.Series)):
+				txt = txt.values
+			if (isinstance(txt, (list, np.ndarray))):
+				txt = ' '.join(txt)
+
+			weighted = np.append(weighted, weightSentencesByLDATopic(txt, dictionary, lda_model, i), axis = 0)
 
 		print(f'Most relevant {n_sentences} sentence(s) from the top {n_answers} answers:\n')
 		weighted_sorted = weighted[np.argsort(weighted[:, 1])[::-1]]
@@ -847,7 +859,15 @@ def printBestLSITopicSentences(df_p, dictionary, lsi_model, n_answers = 10, n_se
 				print(f'topic distance = {df_tmp[tn][j]:.3f}')
 				print('top topic = ', df_tmp['top_topic'][j])
 				print(df_tmp['answers'][j], '\n')
-			weighted = np.append(weighted, weightSentencesByLSITopic(df_tmp['answers'][j], dictionary, lsi_model, i, additional_stopwords = additional_stopwords, wlen = wlen, stem = stem), axis = 0)
+			txt = df_tmp['answers'][j]
+
+			# I don't know why this sometimes returns a Series, but this should hopefully fix it if/when that happens
+			if isinstance(txt, (pd.DataFrame, pd.Series)):
+				txt = txt.values
+			if (isinstance(txt, (list, np.ndarray))):
+				txt = ' '.join(txt)
+
+			weighted = np.append(weighted, weightSentencesByLSITopic(txt, dictionary, lsi_model, i, additional_stopwords = additional_stopwords, wlen = wlen, stem = stem), axis = 0)
 
 		print(f'Most relevant {n_sentences} sentence(s) from the top {n_answers} answers:\n')
 		weighted_sorted = weighted[np.argsort(weighted[:, 1])]
@@ -896,13 +916,190 @@ def weightSentencesByLSITopic(text, dictionary, lsi_model, topic_number,  additi
 
 	return np.array(list(sentence_strength.items()), dtype = "object")
 
-def runNLPPipeline(filename, sheet = None, column_number = 1, additional_stopwords = [''], wlen = 3, stem = True, num_topics = 3, passes = 20, workers = 1, no_below = 1, no_above = 1, keep_n = int(1e10), random_seed = None, coherence_method = 'c_v', topic_names = [None], c_colors = [None], p_colors = [None], bw_method = None, n_answers = 10, n_sentences = 2, show_answers = False, run_lda = True, run_lsi = True, run_ngrams = True):
+
+def getTFIDFvector(processed_answers_list, dictionary = None, ngram_range = (1,1), min_df = 1):
+	'''
+	get the Term Frequency - Inverse Document Frequency vector for a list of sentences
+
+	arguments
+	processed_answers_list : (list of strings, required) contains a list of strings that have been preprocessed. Each entry in the list should be one full answer
+	dictionary : (gensim dictionary object, options) output from getBagOfWords
+	ngram_range : (tuple, optional) which ngrams are desired in this analysis
+	min_df : (float, optional)  ignore terms that have a document frequency strictly lower than this value (1 to not ingore anything)
+
+	'''
+	if (dictionary is None):
+		vectorizer = TfidfVectorizer(analyzer = 'word', ngram_range = ngram_range, min_df = min_df)
+	else:
+		vocab = [v for k, v in dictionary.iteritems()]
+		vectorizer = TfidfVectorizer(analyzer = 'word', ngram_range = ngram_range, min_df = min_df, vocabulary = vocab)
+
+	return vectorizer, vectorizer.fit_transform(processed_answers_list)
+
+def plotKmeanMetrics(sse, elbow = None):
+	'''
+	plot the the sum of squared errors (SSE) for the K-means analysis
+
+	arguments
+	sse : (dict, required) dictionary where keys contain the number of clusters (k value) and values contain the SSE results
+	elbow : (float, optional) the elbow value in the sse array
+	'''
+
+	f,ax = plt.subplots()
+	if (elbow is not None):
+		ax.axvline(elbow, linestyle = '--', color = 'gray')
+	ax.plot(list(sse.keys()), list(sse.values()), '-o', color = 'k')
+	ax.set_xlabel('number of clusters')
+	ax.set_ylabel('SSE')
+
+	return f,ax
+
+def runKmeans(tfidf_vector, vectorizer, df, num_clusters = 5, column_number = 1, num_words_for_label = 5):
+	'''
+	run the k-means clustering analysis using a TF-IDF vector
+
+	arguments
+	tfidf_vector : (matrix, required) the TF-IDF vector matrix resulting from getTFIDFvector
+	vectorizer : (TfidfVectorizer object, required) the vectorizer object resulting from getTFIDFvector
+	df : (pandas dataframe, required) contains the answers
+	num_clusters : (integer or array of integers, optional) the number of clusters to test; if array-like then the best number is found using the elbow method
+	column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
+	num_words_for_label : (integer, optional) the number of words to keep for the topic label
+	'''
+
+	if isinstance(num_clusters,(list, pd.core.series.Series, np.ndarray)) :
+		#Test increments of clusters using elbow method
+		sse = {}
+		km_models = {}
+		for k in num_clusters:
+			kmeans = KMeans(n_clusters = k, max_iter = 1000).fit(tfidf_vector)
+			km_models[k] = kmeans
+			sse[k] = kmeans.inertia_
+		
+		# find the elbow in this curve
+		kneedle = KneeLocator(list(sse.keys()), list(sse.values()), S = 0.0, curve = "convex", direction = "decreasing", online = False, interp_method = "interp1d")
+
+		n_clusters = kneedle.elbow
+	else:
+		n_clusters = num_clusters
+		sse = None
+		km_models = {n_clusters : KMeans(n_clusters = n_clusters)}
+
+	# run a final time with the optimal number of clusters
+	km_models[n_clusters].fit(tfidf_vector)
+
+	result = pd.concat([df, 
+						pd.DataFrame(tfidf_vector.toarray(),
+									 columns = vectorizer.get_feature_names_out()
+									)
+					   ],axis=1)
+
+	result['cluster'] = km_models[n_clusters].predict(tfidf_vector)
+
+
+	# Label each cluster with the word(s) that all of its entries have in common
+	clusters = result['cluster'].unique()
+	labels = []
+	for i in range(len(clusters)):
+		subset = result[result['cluster'] == clusters[i]]
+		exclude = [result.columns[j] for j in range(column_number + 1)] + ['cluster']
+		subset_words = subset.drop(exclude, axis = 1)
+
+		# count the number of times each word appears and take the top N
+		count = subset_words.astype(bool).sum(axis = 0).sort_values(ascending = False)
+		words = ', '.join(count[0:num_words_for_label].index)
+		labels.append(words)
+
+	labels_table = pd.DataFrame(zip(clusters,labels), columns=['cluster','label']).sort_values('cluster')
+	# result_labelled = pd.merge(result,labels_table,on = 'cluster',how = 'left')
+
+
+	labels_table
+
+	return km_models, sse, n_clusters, result, labels_table 
+
+def printBestKmeansSentences(kmeans_model, tfidf_vectorizer, tfidf_vector, labels_table, results_table, n_answers = 10, n_sentences = 2, column_number = 1, additional_stopwords = [''], wlen = 3, stem = True):
+	'''
+	print the most relevant sentences for each cluster
+
+	arguments
+	kmeans_model : (scikit learn Kmeans model object, required) as output from runKmeans
+	tfidf_vectorizer : (TfidfVectorizer object, required) the vectorizer object resulting from getTFIDFvector
+	tfidf_vector : (matrix, required) the TF-IDF vector matrix resulting rfom getTFIDFvector
+	labels_table : (pandas DataFrame, required) DataFrame containing the labels for each cluster, e.g., as output from runKmeans, expects columns of 'cluster' and 'label'
+	results_table : (pandas DataFrame, required) DataFrame containing the results of the kmeans analysis, as output from runKmeans
+	n_answers : (integer, optional) number of answers to use for getting the best sentence (with the top n probabilities in that topic)
+	n_sentences : (integer, optional) number of summary sentences to print	
+	column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
+
+	additional_stopwords : (list of strings, optional) a list of strings containing words that should be removed from text, other than the standard stopwords
+	wlen : (integer, optional) minimum word length (any words < wlen will be excluded)
+	stem : (boolean, optional) whether to apply stemming
+
+	'''
+
+	# get sentences from the closest answers to the cluster
+	dist = kmeans_model.transform(tfidf_vector)
+
+	# get a list of rows to remove that have <= 1 word in the matrix
+	row_sums = tfidf_vector.toarray().astype(bool).sum(axis = 1)
+	result_prune = results_table[row_sums > 1]
+	dist_prune = dist[row_sums > 1]
+
+
+	nlp = spacy.load('en_core_web_sm')
+
+	clusters = result_prune['cluster'].unique()
+	for i in range(len(clusters)):
+		print(f'********** Cluster {i} **********')
+		print(labels_table.loc[labels_table['cluster'] == i]['label'].values)
+		print('\n')
+		
+		nearest_answer_indices = np.argsort(dist_prune[:,i])[:n_answers]
+		nearest_answers = result_prune.iloc[nearest_answer_indices]
+		# print(nearest_answers['cluster'])
+		
+		# combine these into one long text
+		combined_answers = nearest_answers[nearest_answers.columns[column_number]].str.cat(sep=' ')
+		
+		# split this into sentences
+		doc = nlp(combined_answers)
+		sentences = np.array([s.text for s in doc.sents])
+		sentences_processed = []
+		for s in doc.sents:
+			text = preprocess(s.text, additional_stopwords = additional_stopwords, wlen = wlen, stem = stem)
+			sentences_processed.append(' '.join(text))
+		
+		# get a new TF-IDF vector for each of these answers
+		tfidf_vector_sentences = tfidf_vectorizer.fit_transform(sentences_processed)
+		
+		# get the distances
+		dist_sentences = kmeans_model.transform(tfidf_vector_sentences)
+
+		# prune as above
+		row_sums = tfidf_vector_sentences.toarray().astype(bool).sum(axis = 1)
+		sentences_prune = sentences[row_sums > 1]
+		dist_sentences_prune = dist_sentences[row_sums > 1]
+
+		# get the nearest sentences
+		nearest_sentence_indices = np.argsort(dist_sentences_prune[:,i])[:n_sentences]
+		nearest_sentences = sentences_prune[nearest_sentence_indices]
+		nearest_distances = dist_sentences_prune[:,i][nearest_sentence_indices]
+		print(f'Most relevant {n_sentences} sentence(s) from the top {n_answers} answers:\n')
+			
+		for (s,d) in zip(nearest_sentences, nearest_distances):
+			print(f'Distance from centroid = {d:.4}')
+			print(s.strip(),'\n')
+
+
+def runNLPPipeline(filename = None, df = None, sheet = None, column_number = 1, additional_stopwords = [''], wlen = 3, stem = True, num_topics = 3, passes = 20, workers = 1, no_below = 1, no_above = 1, keep_n = int(1e10), random_seed = None, coherence_method = 'c_v', topic_names = [None], c_colors = [None], p_colors = [None], bw_method = None, n_answers = 10, n_sentences = 2,  tfidf_ngram_range = (1,1), tfidf_min_df = 1, kmeans_num_words_for_label = 5, show_answers = False, run_lda = True, run_lsi = True, run_kmeans = True, run_ngrams = True):
 	'''
 	Run the full NLP analysis pipeline, including ngrams and LDA topic modeling
 
 	arguments
-	filename : (string, required) path to the file that stores the data, if sheet is supplied this is assumed to be an Excel file, otherwise it is assumes to be a csv file
+	filename : (string, optional) path to the file that stores the data, if sheet is supplied this is assumed to be an Excel file, otherwise it is assumes to be a csv file (if the filename is None, then df must be supplied)
 	sheet : (string, optional) if supplying an Excel file, this gives the sheet name 
+	df : (pandas DataFrame, optional) if not None, no file will be read in and this dataFrame will be used
 	column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
 
 	additional_stopwords : (list of strings, optional) a list of strings containing words that should be removed from text, other than the standard stopwords
@@ -925,23 +1122,30 @@ def runNLPPipeline(filename, sheet = None, column_number = 1, additional_stopwor
 	p_colors : (list, optional) define the colors for the topic probabilities plot; must be same length as the number of topics
 	bw_method (str, scalar or callable, optional) : the method used to calculate tehe estimator bandwidth (see scipy.stats.gaussian_kde documentation)
 
+	tfidf_ngram_range : (tuple, optional) which ngrams are desired in this analysis
+	tfidf_min_df : (float, optional)  ignore terms that have a document frequency strictly lower than this value (1 to not ingore anything)
+	kmeans_num_words_for_label : (integer, optional) the number of words to keep for the topic label
+
+
 	n_answers : (integer, optional) number of answers to use for getting the best sentence (with the top n probabilities in that topic)
 	n_sentences : (integer, optional) number of summary sentences to print
 	show_answers : (boolean, optional) whether to print the answer to the screen
 
 	run_lda : (boolean, optional) whether to run the LDA analysis
 	run_lsi : (boolean, optional) whether to run the LSI analysis
+	run_kmeans : (boolean, optiona) whether to run the kmeans analysis
 	run_ngrams : (boolean, optional) whether to run the n-grams analysis
 	'''
 
 	# read in the data
-	print(f'  -- Reading data from file: "{filename}" --')
-	if (sheet is None):
-		df = pd.read_csv(filename)
-		sheet = 'plot' # for naming the figures
-	else:
-		print(f'  -- Using sheet: "{sheet}"" --')
-		df = pd.read_excel(filename, sheet)
+	if (df is None):
+		print(f'  -- Reading data from file: "{filename}" --')
+		if (sheet is None):
+			df = pd.read_csv(filename)
+			sheet = 'plot' # for naming the figures
+		else:
+			print(f'  -- Using sheet: "{sheet}"" --')
+			df = pd.read_excel(filename, sheet)
 
 
 	# get the bigrams and trigrams and create bar charts of the results
@@ -1057,6 +1261,30 @@ def runNLPPipeline(filename, sheet = None, column_number = 1, additional_stopwor
 		print(f'  -- Printing summary information for each topic --')
 		printBestLSITopicSentences(lsi_df_d, dictionary, lsi_model[lsi_best_index], n_answers = n_answers, n_sentences = n_sentences, topic_names = topic_names, show_answers = show_answers, additional_stopwords = additional_stopwords, wlen = wlen, stem = stem)
 
+	###################################
+	# run the k-means analysis
+	km_model = None
+	sse = None
+	if (run_kmeans):
+		print('  -- Running k-means clustering analysis --')
+		dictionary, bow_corpus, processed_answers = getBagOfWords(df, column_number,  additional_stopwords = additional_stopwords)
+		processed_answers_list = [' '.join(x) for x in processed_answers]
+		vectorizer, tfidf_vector = getTFIDFvector(processed_answers_list, dictionary = dictionary, ngram_range = tfidf_ngram_range, min_df = tfidf_min_df)
+
+		km_models, km_sse, km_n_clusters, km_result_table, km_labels_table  = runKmeans(tfidf_vector, vectorizer, df, num_clusters = num_topics,  column_number = column_number, num_words_for_label = kmeans_num_words_for_label)
+
+		print(f'  -- The best k-means model has {km_n_clusters} clusters.')
+
+		# plot the results
+		# higher coherence is better
+		fname = 'kmeansMetrics_' + sheet.replace(' ','') + '.png'
+		print(f'  -- Saving K-means metrics plot to: "{fname}" --')
+		f, ax = plotKmeanMetrics(km_sse, km_n_clusters)
+		f.savefig(fname, bbox_inches = 'tight')
+
+		# print the summary information
+		print(f'  -- Printing summary information for each cluster --')
+		printBestKmeansSentences(km_models[km_n_clusters], vectorizer, tfidf_vector, km_labels_table, km_result_table, n_answers = n_answers, n_sentences = n_sentences, column_number = column_number, additional_stopwords = additional_stopwords, wlen = wlen, stem = stem)
 
 	return {
 			"dictionary":dictionary, 
@@ -1073,5 +1301,12 @@ def runNLPPipeline(filename, sheet = None, column_number = 1, additional_stopwor
 				"coherence":lsi_coherence, 
 				"df_d": lsi_df_d, 
 				"best_index":lsi_best_index
+			},
+			"kmeans":{
+				"model": km_model,
+				"labels_table": km_labels_table,
+				"result_table": km_result_table,
+				"sse": km_sse,
+				"best_index": km_n_clusters
 			}
-	    }
+		}
