@@ -1243,7 +1243,7 @@ def runNLPPipeline(filename = None, df = None, sheet = None, column_number = 1, 
 		# plot the results
 		# higher coherence is better
 		fname = 'LSImetrics_' + sheet.replace(' ','') + '.png'
-		print(f'  -- Saving LDA metrics plot to: "{fname}" --')
+		print(f'  -- Saving LSI metrics plot to: "{fname}" --')
 		f, ax = plotLSIMetrics(num_topics, lsi_coherence, lsi_best_index, colors = c_colors)
 		f.savefig(fname, bbox_inches = 'tight')
 
