@@ -4,7 +4,8 @@ Followed installation instructions from here https://platform.openai.com/docs/qu
 
 create a conda env called openai
 ```
-conda create --name openai python=3.10 jupyter
+conda create --name openai python=3.10 jupyter pandas
+conda activate openai
 pip install -r requirements.txt
 ```
 
