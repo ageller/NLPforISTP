@@ -6,10 +6,15 @@ __pycache__
 
 # data files
 data/
+.csv
+.json
+.xls
+.xlsx
 
 # figures
 *.png
 *.pdf
+figures/
 
 # private
 .env
