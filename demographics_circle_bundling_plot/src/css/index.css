@@ -1,0 +1,41 @@
+body {
+	font: 10px sans-serif;
+}
+
+.node {
+	font: 10px sans-serif;
+}
+
+.hidden {
+	display: none;
+}
+.link {
+	stroke: gray;
+	stroke-opacity: 0.7;
+	fill: none;
+	pointer-events: stroke;
+	transition: opacity 0.3s ease-in-out;
+}
+
+
+
+
+
+.highlighted {
+	stroke-opacity:  1.0;
+	stroke: black !important;
+	/* stroke-width: 10 !important; */
+}
+.deemphasized {
+	/* opacity:  0.5; */
+	/* stroke: lightgray; */
+	display:none;
+}
+
+#tooltip{
+	position: absolute;
+	border:  1px solid black;
+	border-radius: 10px;
+	padding: 4px;
+	background-color: white;
+}
