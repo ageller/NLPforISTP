@@ -1,4 +1,6 @@
 //hierarchical edge bundling was taken from : https://bl.ocks.org/mbostock/1044242
+// multi-ribbon chord diagram : https://medium.com/@Starcount/creating-multi-ribbon-chord-diagrams-in-d3-65ee300abb50
+//  custom ribbon : https://observablehq.com/@wolfiex/custom-d3-ribbon
 
 function createSVG(){
 	var radius = params.diameter/2;
@@ -16,29 +18,19 @@ function createSVG(){
 		.append("g")
 			.attr("transform", "translate(" + (radius + params.xOffset) + "," + (radius + params.yOffset) + ")");
 
-	// for the bundling
-	params.cluster = d3.cluster()
-		.size([360, innerRadius]);
 
-//https://bl.ocks.org/owenr/d05687e3d34027ac4aef4db6e913b9f7
-	params.line = d3.radialLine()
-		.curve(d3.curveBundle.beta(0.85))
-//		.curve(d3.curveBasis)
-		.radius(function(d) { return d.y; })
-		.angle(function(d) { return d.x/180*Math.PI; });
+	// for the links
+	params.line = d3.lineRadial()
+	//params.line = d3.areaRadial()
+		//.curve(d3.curveBundle.beta(0.95))
+		.curve(d3.curveBasisClosed)
+		//.curve(d3.curveLinearClosed)
+		//.curve(d3.curveNatural)
+		//.curve(d3.curveCardinalClosed)
+		.radius(function(d) { return d.radius; })
+		.angle(function(d) { return d.angle; });
 
-	//trying to have multiple layers so that I can keep the active ones on top
-	params.link1 = params.svg.append("g").selectAll(".link");
-	params.link2 = params.svg.append("g").selectAll(".link");
-	params.link3 = params.svg.append("g").selectAll(".link");
-	params.node = params.svg.append("g").selectAll(".node");
-
-	//for the arcs
-	params.chord = d3.chord()
-		.padAngle(.04)
-		.sortSubgroups(d3.descending)
-		.sortChords(d3.descending);
-
+	// for the arcs
 	params.arc = d3.arc()
 		.innerRadius(innerRadius)
 		.outerRadius(innerRadius + params.arc1Width);
@@ -47,6 +39,8 @@ function createSVG(){
 		.outerRadius(innerRadius + params.arc1Width + params.arc2Width + 2);
 
 }
+
+
 
 ///////////////////////////
 //for hierarchical bundling
@@ -85,6 +79,8 @@ function createBundles(classes){
 	params.cluster(params.root);
 }
 
+
+
 function populateLinks(){
 
 	// Return a list of demographics for the given array of nodes.
@@ -119,94 +115,128 @@ function populateLinks(){
 				var tt = d.target.data.name.replaceAll(' ','');
 				var t = tt.substr(0, tt.indexOf('.'))
 				var s = tt.substr(tt.indexOf('.'), tt.lastIndexOf('.') - tt.indexOf('.'));
-				return "link " + params.cleanString(t) + ' ' + params.cleanString(s);
+				var name = tt.substr(tt.lastIndexOf('.'), tt.length - tt.lastIndexOf('.'));
+				return "link " + params.cleanString(s) + ' ' + params.cleanString(t) + ' ' + params.cleanString(name);
 			})
 			.attr('fullTarget',function(d){return d.target.data.name})
 			.attr('fullSource',function(d){return d.source.data.name})
+			.attr('name',function(d){
+				var tt = d.source.data.name.replaceAll(' ','');
+				return params.cleanString(tt.substr(tt.lastIndexOf('.'), tt.length - tt.lastIndexOf('.')));
+			})
 			.attr('fullDemographics', function(d){return d.source.data.full_demographics;})
+			.attr('size', function(d){return d.source.data.size;})
 			.attr("d", params.line);
 
+
+	d3.selectAll('.link').on('mouseover', function(){
+		//populate the tooltip
+		var name = d3.select(this).attr('name');
+		var demographics = d3.select(this).attr('fullDemographics');
+		var size = d3.select(this).attr('size');
+
+		var x = d3.event.pageX + 10;
+		var y = d3.event.pageY + 10;
+
+		d3.select('#tooltip')
+			.html(
+				'<b>Name : </b>' + name + '<br>' +
+				'<b>Size : </b>' + size + '<br>' +
+				'<b>Demographics : </b>' + demographics + '<br>'
+			)
+			.style('left',x + 'px')
+			.style('top',y + 'px')
+			.classed('hidden', false);
+
+		d3.selectAll('.' + name).classed('highlighted', true);
+		d3.selectAll('.link:not(.' + name + ')').classed('deemphasized', true);
+	})
+
+	d3.selectAll('.link').on('mouseout', function(){
+        d3.select('#tooltip')
+            .classed('hidden', true)
+            .html('');
+
+        d3.selectAll('.link').classed('highlighted', false).classed('deemphasized', false);
+    })
 }
 
 
 ///////////////////////////
-//for chord diagram, using only exterior arcs 
+//create the exterior arcs 
 ///////////////////////////
-function populateArcs(){
+function drawArcs(){
 
 	//compile the departments and sub_departments
-	var depts = [];
-	var subDepts = [];
-	d3.selectAll('.link').each(function(){
-		var sourceList = d3.select(this).attr('fullSource').split('.');
-		var d = sourceList[0];
-		var s = sourceList[1];
-		if (!depts.includes(d)) depts.push(d);
-		if (!subDepts.includes(d + '.' + s)) subDepts.push(d + '.' + s);
-
-		var targetList = d3.select(this).attr('fullTarget').split('.');
-		d = targetList[0];
-		s = targetList[1];
-		if (!depts.includes(d)) depts.push(d);
-		if (!subDepts.includes(d + '.' + s)) subDepts.push(d + '.' + s);
+	params.depts = [];
+	params.deptSizes = {};
+	params.subDepts = [];
+	params.subDeptSizes = {};
+	params.data.forEach(function(d, i){
+		d.full_demographics.forEach(function(dd,j){
+			var sections = dd.split('.');
+			var s0 = sections[0];
+			var s1 = sections[1];
+			if (params.depts.includes(s0)) params.deptSizes[s0] += parseFloat(d.size);
+			if (!params.depts.includes(s0)) {
+				params.depts.push(s0);
+				params.deptSizes[s0] = parseFloat(d.size);
+			}
+			if (params.subDepts.includes(s0 + '.' + s1)) params.subDeptSizes[s0 + '.' + s1] += parseFloat(d.size);
+			if (!params.subDepts.includes(s0 + '.' + s1)) {
+				params.subDepts.push(s0 + '.' + s1);
+				params.subDeptSizes[s0 + '.' + s1] = parseFloat(d.size);
+			}
+		})
 	})
-
+	
 	//get the startAngle and endAngle for each of these
 	//there is probably a more efficient way to do this
-	var deptArcs = [];
-	var subDeptArcs = [];
+	params.deptArcs = [];
+	params.subDeptArcs = [];
 	var skinnyDepts = [];
-	depts.forEach(function(d,i){
-		var anglesDict = {'index':i, 'startAngle':2*Math.PI, 'endAngle':0, 'angle':2*Math.PI, 'dept':d};
-		var angles = [];
-		params.root.leaves().forEach(function(dd){
-			var deptList = dd.data.name;
-			if (deptList.includes(d)){
-				angles.push(dd.x*Math.PI/180.)
-			}
-		})
-		var ex = d3.extent(angles);
-		anglesDict.startAngle = ex[0];
-		anglesDict.endAngle = ex[1];
-		anglesDict.angle = anglesDict.endAngle - anglesDict.startAngle;
+	var totalDeptSize = d3.sum(Object.values(params.deptSizes));
+	var totalSubDeptSize = d3.sum(Object.values(params.subDeptSizes));
+	var startAngle = params.arcPadding/2.;
+	var subDeptStartAngles = {};
+	params.depts.forEach(function(d,i){
+		var extent = 2.*Math.PI*params.deptSizes[d]/totalDeptSize - params.arcPadding;
+		var endAngle = startAngle + extent;
+		var anglesDict = {'index':i, 'startAngle':startAngle, 'endAngle':endAngle, 'angle':extent, 'dept':d};
 		if (anglesDict.angle < params.minDeptTextAngle) skinnyDepts.push(d)
-		deptArcs.push(anglesDict)
+		params.deptArcs.push(anglesDict);
+		subDeptStartAngles[d] = startAngle;
+		startAngle += extent + params.arcPadding;
 	})
 
-	var padding = 0.00;
-	subDepts.forEach(function(d,i){
-		var anglesDict = {'index':i, 'startAngle':2*Math.PI, 'endAngle':0, 'angle':2*Math.PI, 'subDept':d};
-		var angles = [];
-		params.root.leaves().forEach(function(dd){
-			var deptList = dd.data.name;
-			if (deptList.includes(d)){
-				angles.push(dd.x*Math.PI/180.)
-			}
-		})
-		var ex = d3.extent(angles);
-		anglesDict.startAngle = ex[0] - padding;
-		anglesDict.endAngle = ex[1] + padding;
-		anglesDict.angle = anglesDict.endAngle - anglesDict.startAngle;
-		subDeptArcs.push(anglesDict)
+	
+	params.subDepts.forEach(function(d,i){
+		// get the starting dept angle
+		var dpt = d.substr(0,d.indexOf('.'));
+
+		startAngle = subDeptStartAngles[dpt];
+		var extent = 2.*Math.PI*params.subDeptSizes[d]/totalSubDeptSize - params.arcPadding;
+		var endAngle = startAngle + extent;
+		var anglesDict = {'index':i, 'startAngle':startAngle, 'endAngle':endAngle, 'angle':extent, 'subDept':d};
+		params.subDeptArcs.push(anglesDict);
+		startAngle += extent + params.arcPadding;
+		subDeptStartAngles[dpt] += extent + params.arcPadding
 	})
 
 
-	console.log(deptArcs)
-	console.log(subDeptArcs)
-	//deptArcs = [deptArcs[0]]
 	//draw the arcs
 	//dept
 	var g = params.svg.append("g")
 		.attr("class","arcsDept")
 		.selectAll(".dept")
-		.data(deptArcs).enter().append("g")
+		.data(params.deptArcs).enter().append("g")
 			.attr("class", "dept")
 
 	g.append("path")
 		.attr("id", function(d){return "deptArc_" + params.cleanString(d.dept);})
 		.style("fill", function(d) { return params.fillDept(d.dept); })
 		.style("stroke", function(d) { return params.fillDept(d.dept); })
-		.attr("d", params.arc);
+		.attr("d", params.arc2);
 
 	//add the text
 	g.append("text")
@@ -214,9 +244,9 @@ function populateArcs(){
 		.attr("x", function(d){
 			// not sure why this doesn't center it properly.  Had to add a fudge factor
 			var a = d.angle/2.;
-			return a*(params.diameter/2. + params.arc1Width)*0.7
+			return a*(params.diameter/2. + params.arc1Width + params.arc2Width)*0.7
 		})  
-		.attr("dy", params.arc1Width/2. + params.fontsize1/2. - 2) 
+		.attr("dy", params.arc2Width/2. + params.fontsize1/2. - 2) 
 		.style('font-size', params.fontsize1 + 'px')
 		.style('line-height', params.fontsize1 + 'px')
 		.style('text-anchor','middle')
@@ -229,14 +259,14 @@ function populateArcs(){
 	var g = params.svg.append("g")
 		.attr("class","arcsSubDept")
 		.selectAll(".subDept")
-		.data(subDeptArcs).enter().append("g")
+		.data(params.subDeptArcs).enter().append("g")
 			.attr("class", "subDept");
 
 	g.append("path")
 		.attr("id", function(d){return "subDeptArc_" + params.cleanString(d.subDept);})
 		.style("fill", function(d) { return params.fillDept(d.subDept); })
 		.style("stroke", function(d) { return params.fillDept(d.subDept); })
-		.attr("d", params.arc2);
+		.attr("d", params.arc);
 
 	//add the text, similar to bundling
 	g.append("text")
@@ -262,12 +292,6 @@ function populateArcs(){
 		.style('line-height', params.fontsize2 + 'px')
 		.text(function(d) { 
 			var txt = d.subDept.substring(d.subDept.indexOf('.') + 1);
-			//use only the acronyms
-			// if (txt.includes('(')){
-			// 	var p1 = txt.indexOf('(') + 1;
-			// 	var p2 = txt.indexOf(')');
-			// 	txt = txt.substring(p1, p2)
-			// }
 			return txt;
 		});
 
@@ -297,7 +321,149 @@ function populateArcs(){
 
 }
 
-function styleBundles(){
+///////////////////////////
+//create filled "ribbons" that show the connections 
+///////////////////////////
+function drawMultiRibbons(){
+
+	var links = params.svg.append('g').attr('class','links')
+
+	var innerRadius = params.diameter/2. - params.outerWidth;
+
+	// initialize the start angles
+	var subDeptStartAngles = {};
+	params.subDepts.forEach(function(d,i){
+		subDeptStartAngles[d] = params.subDeptArcs[i].startAngle;
+	})
+
+	// draw the paths
+	var totalSubDeptSize = d3.sum(Object.values(params.subDeptSizes));
+	var dangle = 0.01;
+	params.data.forEach(function(d, i){
+		// will hold values that I can use to get the central angles and radii so that I can "pinch" the areas
+		var an_mean = [];
+		var ra_mean = [];
+		var pathData = [];
+		var newPathData = [];
+		var className = 'link ' + params.cleanString(d.name.split('.')[2]) + ' ';
+		d.full_demographics.forEach(function(dd,j){
+			var sections = dd.split('.');
+			var s0 = sections[0];
+			var s1 = sections[1];
+	
+			// get the start angle and end angle at this location
+			var startAngle = subDeptStartAngles[s0 + '.' + s1];
+			var extent = 2.*Math.PI*d.size/totalSubDeptSize;
+
+			pathData.push({'angle':startAngle, 'radius':innerRadius - 4.});
+			an_mean.push(startAngle + 0.5*extent);
+			ra_mean.push(innerRadius - 4.);
+
+			// add points along the circle to smooth out the region 
+			var an = startAngle + dangle;
+			while (an < startAngle + extent){
+				pathData.push({'angle':an, 'radius':innerRadius - 4.});
+				an += dangle;
+			}
+			pathData.push({'angle':startAngle + extent, 'radius':innerRadius - 4.});
+
+			// for single categories
+			if (d.full_demographics.length == 1) pathData.push({'angle':startAngle + extent/2., 'radius':innerRadius*0.8});
+
+			// increment the start angle
+			subDeptStartAngles[s0 + '.' + s1] += extent
+
+			// add to the class name
+			var ss = params.cleanString(s1);
+			if (!className.includes(ss)) className += ss + ' ';
+		})
+
+		// include the starting position so that it is a closed path
+		pathData.push(pathData[0])
+
+		// sort by angle
+		if (d.full_demographics.length > 1){
+			pathData.sort(function(a, b) {
+				var A = a.angle
+				var B = b.angle;
+				if (A < B) return -1;
+				if (A > B) return 1;
+				return 0;
+			});
+
+
+			// add in mean points to help pinch the curve
+			newPathData = []
+			pathData.forEach(function(p, j){
+				newPathData.push(p)
+				if (j+1 < pathData.length){
+					if (Math.abs(pathData[j+1].angle - p.angle) > 2.*dangle){
+						newPathData.push({'angle':d3.mean(an_mean), 'radius':0})
+					}
+				}
+			})
+			newPathData.push({'angle':d3.mean(an_mean), 'radius':0})
+			//pathData.push({'angle':d3.mean(an_mean), 'radius':0});
+
+		} else {
+			newPathData = pathData;
+		}
+
+
+
+		if (i < 10){
+			//console.log(d.full_demographics, pathData)
+
+			// draw the path
+			links.append('path')
+				.attr('d', params.line(newPathData))
+				.attr('class', className)
+				.attr('name',params.cleanString(d.name.split('.')[2]))
+				.attr('fullDemographics', d.full_demographics.join(', '))
+				.attr('size', d.size);
+		}
+
+
+	})
+	
+
+	// TODO: this mouseover is only working on the stroke, but I'd like it to work inside the area also!
+	d3.selectAll('.link').on('mouseover', function(){
+		//populate the tooltip
+		var name = d3.select(this).attr('name');
+		var demographics = d3.select(this).attr('fullDemographics');
+		var size = d3.select(this).attr('size');
+
+		var x = d3.event.pageX + 10;
+		var y = d3.event.pageY + 10;
+
+		d3.select('#tooltip')
+			.html(
+				'<b>Name : </b>' + name + '<br>' +
+				'<b>Size : </b>' + size + '<br>' +
+				'<b>Demographics : </b>' + demographics + '<br>'
+			)
+			.style('left',x + 'px')
+			.style('top',y + 'px')
+			.classed('hidden', false);
+
+		d3.selectAll('.' + name).classed('highlighted', true);
+		d3.selectAll('.link:not(.' + name + ')').classed('deemphasized', true);
+	})
+
+	d3.selectAll('.link').on('mouseout', function(){
+        d3.select('#tooltip')
+            .classed('hidden', true)
+            .html('');
+
+        d3.selectAll('.link').classed('highlighted', false).classed('deemphasized', false);
+    })
+
+
+}
+
+
+function styleRibbons(){
 	//there is probably a more efficient way to do this
 	d3.selectAll('.link').each(function(){
 		var elem = d3.select(this);
@@ -311,10 +477,10 @@ function styleBundles(){
 		// 	console.log(year, elem.attr('fullSource'))
 		// }
 
-		// //size by dollar amount
-		// var dollars = elem.attr('dollars');
-		// elem.style('stroke-width', Math.min(params.sizeDollar(dollars), params.maxSize))
-		// //elem.style('stroke-width', 2.)
+		//size by the number in that category
+		var size = elem.attr('size');
+		elem.style('stroke-width', Math.min(params.sizeCount(size), params.maxSize))
+		//elem.style('stroke-width', 2.)
 
 		// //color by funded
 		// var funded = elem.attr('funded');
@@ -340,15 +506,15 @@ function exportSVG(){
 //runs on load
 defineParams();
 createSVG();
-d3.json("src/data/ISTP_demographics_oct21_bundling.json", function(error, classes) {
-//d3.json("src/data/NAISE_JAs.json", function(error, classes) {
+d3.json("src/data/ISTP_demographics_oct21_bundling.json", function(error, data) {
 	if (error) throw error;
 
-	params.classes = classes;
-	createBundles(classes);
-	populateLinks(classes);
-	populateArcs();
-	styleBundles();
+	params.data = data;
+	//createBundles();
+	//populateLinks();
+	drawArcs();
+	drawMultiRibbons();
+	//styleRibbons();
 
 	//hide all the links (to create a donut plot)
 	//d3.selectAll('.link').style('display', 'None');

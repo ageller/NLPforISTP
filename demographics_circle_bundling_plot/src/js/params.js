@@ -3,33 +3,21 @@ var params;
 
 function defineParams(){
 	params = new function() {
-		this.classes = null;
-		this.root = null;
-		this.matrix = null;
+		this.data = null;
 
 		this.svg = null;
-		this.cluster = null;
+
 		this.line = null;
-		this.link1 = null;
-		this.link2 = null;
-		this.link3 = null;
-		this.node = null;
-		this.chord = null;
 		this.arc = null;
+		this.arc2 = null;
 
-		// this.arc1Width = 30;
-		// this.arc2Width = 15;
-		// this.diameter = 960;
-		// this.outerWidth = 120;
-		// this.xOffset = 220;
-		// this.yOffset = 140;
-
-		this.arc1Width = 20;
-		this.arc2Width = 50;
+		this.arc1Width = 50;
+		this.arc2Width = 20;
 		this.diameter = 700;
 		this.outerWidth = 120;
 		this.xOffset = 300;
 		this.yOffset = 200;
+		this.arcPadding = 0.01; // degrees
 
 		this.fontsize1 = 12;
 		this.fontsize2 = 10;
@@ -38,7 +26,7 @@ function defineParams(){
 
 		this.fillYear = d3.scaleLinear().domain([2012,2022]).range(['#00708F', '#FF101F']);
 		//this.sizeDollar = d3.scaleLog().base(2).domain([1,6e6]).range([1, 3]);
-		this.sizeDollar = d3.scaleLinear().domain([1, 20000000]).range([1, 6]);
+		this.sizeCount = d3.scaleLinear().domain([1, 450]).range([1, 6]);
 		this.maxSize = 6;
 
 		//I'm going to define the fills based on the departments, and just hard code it in here
@@ -65,7 +53,8 @@ function defineParams(){
 		}
 
 		this.cleanString = function(s){
-            if (s) return s.replace(/sub\>/g,'').replace(/\s/g,'').replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+            if (s) return s.replace(/\s/g,'').replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
         }
+
 	}
 }
