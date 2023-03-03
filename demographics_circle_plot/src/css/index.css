@@ -1,0 +1,47 @@
+body {
+	font: 10px sans-serif;
+}
+
+.node {
+	font: 10px sans-serif;
+}
+
+.hidden {
+	display: none;
+}
+.link {
+	stroke: black;
+	stroke-opacity:1;
+	stroke-width:2px;
+	fill: black;
+	fill-opacity:0.5;
+	pointer-events: all;
+	transition: opacity 0.3s ease-in-out;
+}
+
+
+
+
+
+.highlightedArc {
+	stroke: black !important;
+	stroke-width:2px !important;
+	/* stroke-width: 10 !important; */
+}
+.highlightedLink {
+	opacity:1 !important;
+}
+.deemphasizedArc {
+	opacity:0.0 !important;
+}
+.deemphasizedLink {
+	opacity:0.05 !important;
+}
+#tooltip{
+	position: absolute;
+	border:  1px solid black;
+	border-radius: 10px;
+	padding: 4px;
+	background-color: white;
+	max-width:300px;
+}
