@@ -58,5 +58,8 @@ function defineParams(){
             if (s) return s.replace(/\s/g,'').replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
         }
 
+		// seeded random number!
+		this.random = new Math.seedrandom('ISTP')
+
 	}
 }

@@ -5,7 +5,6 @@
 
 // TO DO
 // - Add axes?
-// - some way to offset from center and make the shapes have a more consistent width
 
 function createSVG(){
 	var radius = params.diameter/2;
@@ -27,11 +26,12 @@ function createSVG(){
 	// for the links
 	params.line = d3.lineRadial()
 	//params.line = d3.areaRadial()
-		//.curve(d3.curveBundle.beta(0.97))
 		.curve(d3.curveBasisClosed)
 		// .curve(d3.curveLinearClosed)
+		//.curve(d3.curveBundle.beta(0.9))
 		//.curve(d3.curveNatural)
-		//.curve(d3.curveCardinalClosed)
+		//.curve(d3.curveCardinalClosed.tension(0.5))
+		//.curve(d3.curveCatmullRom.alpha(0.5))
 		.radius(function(d) { return d.radius; })
 		.angle(function(d) { return d.angle; });
 
@@ -230,8 +230,10 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 
 	// initialize the start angles
 	var subDeptStartAngles = {};
+	var subDeptEndAngles = {}; // will be filled in below
 	params.subDepts.forEach(function(d,i){
 		subDeptStartAngles[d] = params.subDeptArcs[i].startAngle;
+
 	})
 
 	// get the maximum size to scale the opacity
@@ -247,12 +249,15 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 			minSize = Math.min(minSize, d.size);
 		}
 	});
+	var sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.02, 1]);
+	// var sizeAlpha = d3.scalePow().exponent(1.5).domain([minSize, maxSize]).range([0.02, 1]);
+	var sizeRadius = d3.scaleLinear().domain([minSize, maxSize]).range([innerRadius*0.1, innerRadius*0.6]);
 
 	// draw the paths
 	var totalSubDeptSize = d3.sum(Object.values(params.subDeptSizes));
-	var dangle = 0.005;
+	var dangle = 0.001;
 	params.data.forEach(function(d, i){
-		if (d.size > params.minCountToLink){
+		if (d.size >= params.minCountToLink){
 			var full_demo = d.full_demographics;
 
 			// exclude 'Did not respond'
@@ -267,8 +272,7 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 				// if 0, then single categories are shown
 				if (full_demo.length > 1){
 				// will hold values that I can use to get the central angles and radii so that I can "pinch" the areas
-				var an_mean = [];
-				var ra_mean = [];
+				var an_mean = {};
 				var pathData = [];
 				var newPathData = [];
 				var className = 'link ' + params.cleanString(d.name.split('.')[2]) + ' ';
@@ -276,28 +280,29 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 					var sections = dd.split('.');
 					var s0 = sections[0];
 					var s1 = sections[1];
-			
-					// get the start angle and end angle at this location
-					var startAngle = subDeptStartAngles[s0 + '.' + s1];
-					var extent = 2.*Math.PI*d.size/totalSubDeptSize;
+					var subdpt = s0 + '.' + s1;
 
-					pathData.push({'angle':startAngle, 'radius':innerRadius - 4.});
-					an_mean.push(startAngle + 0.5*extent);
-					ra_mean.push(innerRadius - 4.);
+					// get the start angle and end angle at this location
+					var startAngle = subDeptStartAngles[subdpt];
+					var extent = 2.*Math.PI*d.size/totalSubDeptSize;
+					subDeptEndAngles[subdpt] = startAngle + extent;
+					an_mean[subdpt] = startAngle + 0.5*extent;
+
+					pathData.push({'angle':startAngle, 'radius':innerRadius - 4., 'subDept':subdpt, 'size':d.size, 'offset':false});
 
 					// add points along the circle to smooth out the region 
 					var an = startAngle + dangle;
 					while (an < startAngle + extent){
-						pathData.push({'angle':an, 'radius':innerRadius - 4.});
+						pathData.push({'angle':an, 'radius':innerRadius - 4., 'subDept':subdpt, 'size':d.size, 'offset':false});
 						an += dangle;
 					}
-					pathData.push({'angle':startAngle + extent, 'radius':innerRadius - 4.});
+					pathData.push({'angle':startAngle + extent, 'radius':innerRadius - 4., 'subDept':subdpt, 'size':d.size, 'offset':false});
 
 					// for single categories
-					if (full_demo.length == 1) pathData.push({'angle':startAngle + extent/2., 'radius':innerRadius*0.8});
+					if (full_demo.length == 1) pathData.push({'angle':startAngle + extent/2., 'radius':innerRadius*0.8, 'subDept':subdpt, 'size':d.size, 'offset':false});
 
 					// increment the start angle
-					subDeptStartAngles[s0 + '.' + s1] += extent
+					subDeptStartAngles[subdpt] += extent
 
 					// add to the class name
 					var ss = params.cleanString(s1);
@@ -320,24 +325,46 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 							return 0;
 						});
 
-
-						// add in mean points to help pinch the curve
+						// add in points to help pinch the curve toward the center
 						newPathData = []
-						var ma = Math.random()*2.*Math.PI; 
-						// var ma = d3.mean(an_mean)
-						var mr = Math.random()*innerRadius/4.; //0.
-						// var mr = 0.;
+						// var ma = Math.random()*2.*Math.PI; 
+						// var mr = Math.random()*innerRadius*0.5; //0.
+						var mr = 0.;
+						var ma = 0.;
 						pathData.forEach(function(p, j){
 							newPathData.push(p)
 							if (j+1 < pathData.length){
 								if (Math.abs(pathData[j+1].angle - p.angle) > 2.*dangle){
-									newPathData.push({'angle':ma, 'radius':mr})
-									// newPathData.push({'angle':ma, 'radius':mr})
+									newPathData.push({'angle':p.angle + 0.025, 'radius':sizeRadius(p.size), 'subDept':p.subDept, 'size':p.size, 'offset':true});
+									newPathData.push({'angle':ma, 'radius':mr, 'subDept':p.subDept, 'size':p.size, 'offset':true});
+									newPathData.push({'angle':pathData[j+1].angle - 0.025, 'radius':sizeRadius(p.size), 'subDept':pathData[j+1].subDept, 'size':pathData[j+1].size, 'offset':true});
+
 								}
 							}
 						})
-						newPathData.push({'angle':ma, 'radius':mr})
-						// newPathData.push({'angle':ma, 'radius':mr})
+						var p = pathData[pathData.length - 1];
+						var p0 = pathData[0];
+						newPathData.push({'angle':p.angle, 'radius':sizeRadius(p.size), 'subDept':p.subDept, 'size':p.size, 'offset':true});
+						newPathData.push({'angle':ma, 'radius':mr, 'subDept':p.subDept,'size':p.size, 'offset':true})
+						newPathData.push({'angle':p0.angle, 'radius':sizeRadius(p0.size), 'subDept':p0.subDept, 'size':p0.size, 'offset':true});
+						newPathData.push(p0)
+
+						// now loop through and apply a random offset
+						var fac = 0.1;
+						var mx = (2.*params.random() - 1)*innerRadius*fac; 
+						var my = (2.*params.random() - 1)*innerRadius*fac;
+						newPathData.forEach(function(p, j){
+							if (p.offset){
+								//convert to xy and apply the offset
+								var x = p.radius*Math.cos(p.angle) + mx;
+								var y = p.radius*Math.sin(p.angle) + my;
+
+								//convert back to polar and redefine positions
+								p.radius = Math.sqrt(x*x + y*y);
+								p.angle = Math.atan2(y,x);
+
+							}
+						})
 
 					} else {
 						newPathData = pathData;
@@ -348,7 +375,6 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 					//console.log(d.full_demographics, pathData)
 
 					// draw the path
-					sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.05, 1]);
 					links.append('path')
 						.attr('d', params.line(newPathData))
 						.attr('class', className)
@@ -436,7 +462,15 @@ function exportSVG(){
 	//https://morioh.com/p/287697cc17da
 	svgExport.downloadSvg(
 		document.getElementById("svg"), // 
-		"ISTP_demographics_bundling", // chart title: file name of exported image
+		"ISTP_demographics_circle", // chart title: file name of exported image
+		{ width: 3840, height: 3840 } // options 
+	);
+}
+
+function exportPDF(){
+	svgExport.downloadPdf(
+		document.getElementById("svg"), // 
+		"ISTP_demographics_circle", // chart title: file name of exported image
 		{ width: 3840, height: 3840 } // options 
 	);
 }
