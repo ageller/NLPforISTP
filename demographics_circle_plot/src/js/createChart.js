@@ -207,12 +207,30 @@ function drawArcs(){
 		var text = d3.select(this).attr('selecterText')
 		var selecter = params.cleanString(text);
 		d3.select(this).select('path').classed('highlightedArc', true);
+
+		// increase the opacity in the selected links
+		var sizes = [];
+		d3.selectAll('.link.' + selecter).each(function(){
+			var s = parseFloat(d3.select(this).attr('size'));
+			if (!sizes.includes(s)) sizes.push(s);
+		});
+		if (sizes.length == 1) sizes.unshift(0); // for single categories, make sure that we get the max opacity
+		var tmpSizeAlpha = d3.scaleLinear().domain(d3.extent(sizes)).range([0.02, 1]);
+
+		d3.selectAll('.link.' + selecter).style('opacity',function(){
+			return tmpSizeAlpha(parseFloat(d3.select(this).attr('size')));
+		});
 		d3.selectAll('.link:not(.' + selecter + ')').classed('deemphasizedArc', true);
 	})
 
 	d3.selectAll('.subDept').on('mouseout', function(){
 		d3.selectAll('.link').classed('deemphasizedArc', false);
 		d3.selectAll('.subDept').selectAll('path').classed('highlightedArc', false);
+		var text = d3.select(this).attr('selecterText')
+		var selecter = params.cleanString(text);
+		d3.selectAll('.link.' + selecter).style('opacity',function(){
+			return params.sizeAlpha(parseFloat(d3.select(this).attr('size')));
+		});
 
 	})
 
@@ -249,9 +267,9 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 			minSize = Math.min(minSize, d.size);
 		}
 	});
-	var sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.02, 1]);
+	params.sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.02, 1]);
 	// var sizeAlpha = d3.scalePow().exponent(1.5).domain([minSize, maxSize]).range([0.02, 1]);
-	var sizeRadius = d3.scaleLinear().domain([minSize, maxSize]).range([innerRadius*0.1, innerRadius*0.6]);
+	params.sizeRadius = d3.scaleLinear().domain([minSize, maxSize]).range([innerRadius*0.1, innerRadius*0.6]);
 
 	// draw the paths
 	var totalSubDeptSize = d3.sum(Object.values(params.subDeptSizes));
@@ -335,18 +353,18 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 							newPathData.push(p)
 							if (j+1 < pathData.length){
 								if (Math.abs(pathData[j+1].angle - p.angle) > 2.*dangle){
-									newPathData.push({'angle':p.angle + 0.025, 'radius':sizeRadius(p.size), 'subDept':p.subDept, 'size':p.size, 'offset':true});
+									newPathData.push({'angle':p.angle + 0.025, 'radius':params.sizeRadius(p.size), 'subDept':p.subDept, 'size':p.size, 'offset':true});
 									newPathData.push({'angle':ma, 'radius':mr, 'subDept':p.subDept, 'size':p.size, 'offset':true});
-									newPathData.push({'angle':pathData[j+1].angle - 0.025, 'radius':sizeRadius(p.size), 'subDept':pathData[j+1].subDept, 'size':pathData[j+1].size, 'offset':true});
+									newPathData.push({'angle':pathData[j+1].angle - 0.025, 'radius':params.sizeRadius(p.size), 'subDept':pathData[j+1].subDept, 'size':pathData[j+1].size, 'offset':true});
 
 								}
 							}
 						})
 						var p = pathData[pathData.length - 1];
 						var p0 = pathData[0];
-						newPathData.push({'angle':p.angle, 'radius':sizeRadius(p.size), 'subDept':p.subDept, 'size':p.size, 'offset':true});
+						newPathData.push({'angle':p.angle, 'radius':params.sizeRadius(p.size), 'subDept':p.subDept, 'size':p.size, 'offset':true});
 						newPathData.push({'angle':ma, 'radius':mr, 'subDept':p.subDept,'size':p.size, 'offset':true})
-						newPathData.push({'angle':p0.angle, 'radius':sizeRadius(p0.size), 'subDept':p0.subDept, 'size':p0.size, 'offset':true});
+						newPathData.push({'angle':p0.angle, 'radius':params.sizeRadius(p0.size), 'subDept':p0.subDept, 'size':p0.size, 'offset':true});
 						newPathData.push(p0)
 
 						// now loop through and apply a random offset
@@ -382,7 +400,7 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 						.attr('fullDemographics', d.full_demographics.join(', '))
 						.attr('size', d.size)
 						.style('opacity',function(){
-							return sizeAlpha(d.size);
+							return params.sizeAlpha(d.size);
 						});
 				}
 			}
@@ -392,7 +410,6 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 	})
 	
 
-	// TODO: this mouseover is only working on the stroke, but I'd like it to work inside the area also!
 	d3.selectAll('.link').on('mouseover', function(){
 		//populate the tooltip
 		var name = d3.select(this).attr('name');
@@ -428,35 +445,6 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 }
 
 
-function styleRibbons(){
-	//there is probably a more efficient way to do this
-	d3.selectAll('.link').each(function(){
-		var elem = d3.select(this);
-
-		elem.style('stroke-linecap','round');
-		// //color by year
-		// var year = elem.attr('year');
-		// if (year > 0){
-		// 	elem.style('stroke', params.fillYear(year))
-		// } else {
-		// 	console.log(year, elem.attr('fullSource'))
-		// }
-
-		//size by the number in that category
-		var size = elem.attr('size');
-		elem.style('stroke-width', Math.min(params.sizeCount(size), params.maxSize))
-		//elem.style('stroke-width', 2.)
-
-		// //color by funded
-		// var funded = elem.attr('funded');
-		// elem.classed(funded, true);
-
-
-	})
-
-
-}
-
 
 function exportSVG(){
 	//https://morioh.com/p/287697cc17da
@@ -479,24 +467,13 @@ function exportPDF(){
 //runs on load
 defineParams();
 createSVG();
-d3.json("src/data/ISTP_demographics_oct21_circle_data.json", function(error, data) {
-	if (error) throw error;
+d3.json("src/data/PHY130-3-02_SPR2023_circle_data.json", function(error, data) {
+// d3.json("src/data/ISTP_demographics_combined_circle_data.json", function(error, data) {
+		if (error) throw error;
 
 	params.data = data;
-	//createBundles();
-	//populateLinks();
+
 	drawArcs();
 	drawMultiRibbons();
-	//styleRibbons();
 
-	//hide all the links (to create a donut plot)
-	//d3.selectAll('.link').style('display', 'None');
-
-	//add a large NAISE to the middle
-	// params.svg.append("g").append('text')
-	// 	.attr('text-anchor', 'middle')
-	// 	.attr('dy', '30px') //not sure how to calculate this number
-	// 	.style('font-size', '80px')
-	// 	.style('line-height', '80px')
-	// 	.text('NAISE')
 });
