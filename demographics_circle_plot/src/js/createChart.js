@@ -215,7 +215,7 @@ function drawArcs(){
 			if (!sizes.includes(s)) sizes.push(s);
 		});
 		if (sizes.length == 1) sizes.unshift(0); // for single categories, make sure that we get the max opacity
-		var tmpSizeAlpha = d3.scaleLinear().domain(d3.extent(sizes)).range([0.02, 1]);
+		var tmpSizeAlpha = d3.scaleLinear().domain(d3.extent(sizes)).range([0.1, 1]);
 
 		d3.selectAll('.link.' + selecter).style('opacity',function(){
 			return tmpSizeAlpha(parseFloat(d3.select(this).attr('size')));
@@ -267,7 +267,7 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 			minSize = Math.min(minSize, d.size);
 		}
 	});
-	params.sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.02, 1]);
+	params.sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.05, 1]);
 	// var sizeAlpha = d3.scalePow().exponent(1.5).domain([minSize, maxSize]).range([0.02, 1]);
 	params.sizeRadius = d3.scaleLinear().domain([minSize, maxSize]).range([innerRadius*0.1, innerRadius*0.6]);
 
