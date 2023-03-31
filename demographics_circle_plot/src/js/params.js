@@ -29,18 +29,24 @@ function defineParams(){
 		this.sizeAlpha;
 		this.sizeRadius;
 		this.maxSize = 6;
-
+		
 		//I'm going to define the fills based on the departments, and just hard code it in here
 		this.deptColors = {
-			'Gender'  : '#D81B60', // 
-			'Race'    : '#1E88E5', // 
-			'Role'    : '#FFC107', //
-			'Institution Type'   : '#004D40', // 
+			// 'Gender'  : '#D81B60', 
+			// 'Race'    : '#1E88E5', 
+			// 'Role'    : '#FFC107', 
+			// 'Institution Type'   : '#004D40', 
 
-			'Race/Ethnicity'    : '#1E88E5', // 
-			'Student Program and Plan'    : '#FFC107', //
-			'College or School'    : '#FFC107', //
-			'1st Gen College Student'   : '#004D40', // 
+			'Gender'  : '#99b83c', 
+			'Race'    : '#6357a0', 
+			'Role'    : '#f2a152', 
+			'Institution Type'   : '#459aa6',  
+			'Primary Field' : '#e94241',
+
+			'Race/Ethnicity'    : '#1E88E5',  
+			'Student Program and Plan'    : '#FFC107', 
+			'College or School'    : '#FFC107', 
+			'1st Gen College Student'   : '#004D40', 
 		}
 		this.fillDept = function(name){
 			var i = name.indexOf('.');
@@ -63,6 +69,8 @@ function defineParams(){
 
 		// seeded random number!
 		this.random = new Math.seedrandom('ISTP')
+
+		this.excludeDidNotRespond = true;
 
 	}
 }

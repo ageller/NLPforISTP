@@ -57,18 +57,20 @@ function drawArcs(){
 	params.subDeptSizes = {};
 	params.data.forEach(function(d, i){
 		d.full_demographics.forEach(function(dd,j){
-			var sections = dd.split('.');
-			var s0 = sections[0];
-			var s1 = sections[1];
-			if (params.depts.includes(s0)) params.deptSizes[s0] += parseFloat(d.size);
-			if (!params.depts.includes(s0)) {
-				params.depts.push(s0);
-				params.deptSizes[s0] = parseFloat(d.size);
-			}
-			if (params.subDepts.includes(s0 + '.' + s1)) params.subDeptSizes[s0 + '.' + s1] += parseFloat(d.size);
-			if (!params.subDepts.includes(s0 + '.' + s1)) {
-				params.subDepts.push(s0 + '.' + s1);
-				params.subDeptSizes[s0 + '.' + s1] = parseFloat(d.size);
+			if (!params.excludeDidNotRespond || (params.excludeDidNotRespond && !dd.includes('Did not respond'))){
+				var sections = dd.split('.');
+				var s0 = sections[0];
+				var s1 = sections[1];
+				if (params.depts.includes(s0)) params.deptSizes[s0] += parseFloat(d.size);
+				if (!params.depts.includes(s0)) {
+					params.depts.push(s0);
+					params.deptSizes[s0] = parseFloat(d.size);
+				}
+				if (params.subDepts.includes(s0 + '.' + s1)) params.subDeptSizes[s0 + '.' + s1] += parseFloat(d.size);
+				if (!params.subDepts.includes(s0 + '.' + s1)) {
+					params.subDepts.push(s0 + '.' + s1);
+					params.subDeptSizes[s0 + '.' + s1] = parseFloat(d.size);
+				}
 			}
 		})
 	})
@@ -137,7 +139,7 @@ function drawArcs(){
 
 	//add the text
 	g.append("text")
-		.attr("class", "deptText")
+		.attr("class", "deptText label")
 		.attr("x", function(d){
 			// not sure why this doesn't center it properly.  Had to add a fudge factor
 			var a = d.angle/2.;
@@ -174,7 +176,7 @@ function drawArcs(){
 			if (skinnyDepts.includes(dd)){
 				cls += ' skinny';
 			}
-			return cls;
+			return cls + " label";
 		})
 		.attr("dy", "0.3em")
 		.attr("transform", function(d) { 
@@ -239,7 +241,7 @@ function drawArcs(){
 ///////////////////////////
 //create filled "ribbons" that show the connections 
 ///////////////////////////
-function drawMultiRibbons(excludeDidNotRespond = true){
+function drawMultiRibbons(){
 
 
 	var links = params.svg.append('g').attr('class','links')
@@ -262,7 +264,7 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 		d.full_demographics.forEach(function(dd,j){
 			if (!dd.includes('Did not respond')) hasResponse = true;
 		})
-		if ((excludeDidNotRespond && hasResponse) || !excludeDidNotRespond) {
+		if ((params.excludeDidNotRespond && hasResponse) || !params.excludeDidNotRespond) {
 			maxSize = Math.max(maxSize, d.size);
 			minSize = Math.min(minSize, d.size);
 		}
@@ -273,13 +275,13 @@ function drawMultiRibbons(excludeDidNotRespond = true){
 
 	// draw the paths
 	var totalSubDeptSize = d3.sum(Object.values(params.subDeptSizes));
-	var dangle = 0.001;
+	var dangle = 0.0005;
 	params.data.forEach(function(d, i){
 		if (d.size >= params.minCountToLink){
 			var full_demo = d.full_demographics;
 
 			// exclude 'Did not respond'
-			if (excludeDidNotRespond){
+			if (params.excludeDidNotRespond){
 				full_demo = [];
 				d.full_demographics.forEach(function(dd,j){
 					if (!dd.includes('Did not respond')) full_demo.push(dd);
@@ -467,8 +469,8 @@ function exportPDF(){
 //runs on load
 defineParams();
 createSVG();
-d3.json("src/data/PHY130-3-02_SPR2023_circle_data.json", function(error, data) {
-// d3.json("src/data/ISTP_demographics_combined_circle_data.json", function(error, data) {
+//d3.json("src/data/PHY130-3-02_SPR2023_circle_data.json", function(error, data) {
+d3.json("src/data/ISTP_demographics_combined_circle_data.json", function(error, data) {
 		if (error) throw error;
 
 	params.data = data;
