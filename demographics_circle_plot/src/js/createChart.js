@@ -48,7 +48,7 @@ function createSVG(){
 ///////////////////////////
 //create the exterior arcs 
 ///////////////////////////
-function drawArcs(){
+function drawArcs(drawDepts = true, addLabels = true){
 
 	//compile the departments and sub_departments
 	params.depts = [];
@@ -122,37 +122,41 @@ function drawArcs(){
 
 
 
+	if (drawDepts && params.arc2Width > 0){
 
-	//draw the arcs
-	//dept
-	var g = params.svg.append("g")
-		.attr("class","arcsDept")
-		.selectAll(".dept")
-		.data(params.deptArcs).enter().append("g")
-			.attr("class", "dept")
+		//draw the arcs
+		//dept
+		var g = params.svg.append("g")
+			.attr("class","arcsDept")
+			.selectAll(".dept")
+			.data(params.deptArcs).enter().append("g")
+				.attr("class", "dept")
 
-	g.append("path")
-		.attr("id", function(d){return "deptArc_" + params.cleanString(d.dept);})
-		.style("fill", function(d) { return params.fillDept(d.dept); })
-		.style("stroke", function(d) { return params.fillDept(d.dept); })
-		.attr("d", params.arc2);
+		g.append("path")
+			.attr("id", function(d){return "deptArc_" + params.cleanString(d.dept);})
+			.style("fill", function(d) { return params.fillDept(d.dept); })
+			.style("stroke", function(d) { return params.fillDept(d.dept); })
+			.attr("d", params.arc2);
 
-	//add the text
-	g.append("text")
-		.attr("class", "deptText label")
-		.attr("x", function(d){
-			// not sure why this doesn't center it properly.  Had to add a fudge factor
-			var a = d.angle/2.;
-			return a*(params.diameter/2. + params.arc1Width + params.arc2Width)*0.7
-		})  
-		.attr("dy", params.arc2Width/2. + params.fontsize1/2. - 2) 
-		.style('font-size', params.fontsize1 + 'px')
-		.style('line-height', params.fontsize1 + 'px')
-		.style('text-anchor','middle')
-		.style('fill','white')
-		.append("textPath")
-			.attr("xlink:href",function(d){return "#deptArc_" +  params.cleanString(d.dept);})
-			.text(function(d){if (d.angle > params.minDeptTextAngle) return d.dept;});
+		if (addLabels){
+			//add the text
+			g.append("text")
+				.attr("class", "deptText label")
+				.attr("x", function(d){
+					// not sure why this doesn't center it properly.  Had to add a fudge factor
+					var a = d.angle/2.;
+					return a*(params.diameter/2. + params.arc1Width + params.arc2Width)*0.7
+				})  
+				.attr("dy", params.arc2Width/2. + params.fontsize1/2. - 2) 
+				.style('font-size', params.fontsize1 + 'px')
+				.style('line-height', params.fontsize1 + 'px')
+				.style('text-anchor','middle')
+				.style('fill','white')
+				.append("textPath")
+					.attr("xlink:href",function(d){return "#deptArc_" +  params.cleanString(d.dept);})
+					.text(function(d){if (d.angle > params.minDeptTextAngle) return d.dept;});
+		}
+	}
 
 	//subDept
 	var g = params.svg.append("g")
@@ -168,39 +172,41 @@ function drawArcs(){
 		.style("stroke", function(d) { return params.fillDept(d.subDept); })
 		.attr("d", params.arc);
 
-	//add the text, similar to bundling
-	g.append("text")
-		.attr("class", function(d){
-			var cls = 'subDeptText';
-			var dd = d.subDept.substring(0, d.subDept.indexOf('.'));
-			if (skinnyDepts.includes(dd)){
-				cls += ' skinny';
-			}
-			return cls + " label";
-		})
-		.attr("dy", "0.3em")
-		.attr("transform", function(d) { 
-			var rot = (d.startAngle + (d.endAngle - d.startAngle)/2.)*180/Math.PI;
-			var x =  params.diameter/2 - params.outerWidth + params.arc1Width + params.arc2Width + 4;
-			return "rotate(" + (rot - 90) + ")translate(" + x + ",0)" + (rot < 180 ? "" : "rotate(180)"); 
-		})
-		.attr("text-anchor", function(d) { 
-			var rot = (d.startAngle + (d.endAngle - d.startAngle)/2.)*180/Math.PI;
-			return rot < 180 ? "start" : "end"; 
-		})
-		.style('font-size', params.fontsize2 + 'px')
-		.style('line-height', params.fontsize2 + 'px')
-		.text(function(d) { 
-			var txt = '[' + d.count +', ' + d.percentage.toFixed(1) + '%] ' + d.subDept.substring(d.subDept.indexOf('.') + 1);
-			return txt;
-		});
+	if (addLabels){
+		//add the text, similar to bundling
+		g.append("text")
+			.attr("class", function(d){
+				var cls = 'subDeptText';
+				var dd = d.subDept.substring(0, d.subDept.indexOf('.'));
+				if (skinnyDepts.includes(dd)){
+					cls += ' skinny';
+				}
+				return cls + " label";
+			})
+			.attr("dy", "0.3em")
+			.attr("transform", function(d) { 
+				var rot = (d.startAngle + (d.endAngle - d.startAngle)/2.)*180/Math.PI;
+				var x =  params.diameter/2 - params.outerWidth + params.arc1Width + params.arc2Width + 4;
+				return "rotate(" + (rot - 90) + ")translate(" + x + ",0)" + (rot < 180 ? "" : "rotate(180)"); 
+			})
+			.attr("text-anchor", function(d) { 
+				var rot = (d.startAngle + (d.endAngle - d.startAngle)/2.)*180/Math.PI;
+				return rot < 180 ? "start" : "end"; 
+			})
+			.style('font-size', params.fontsize2 + 'px')
+			.style('line-height', params.fontsize2 + 'px')
+			.text(function(d) { 
+				var txt = '[' + d.count +', ' + d.percentage.toFixed(1) + '%] ' + d.subDept.substring(d.subDept.indexOf('.') + 1);
+				return txt;
+			});
 
-	d3.selectAll('.subDeptText.skinny').append('tspan')
-		.style('font-weight', 'bold')
-		.text(function(d){
-			var dd = d.subDept.substring(0, d.subDept.indexOf('.'));
-			return ' [' + dd + ']';
-		})
+		d3.selectAll('.subDeptText.skinny').append('tspan')
+			.style('font-weight', 'bold')
+			.text(function(d){
+				var dd = d.subDept.substring(0, d.subDept.indexOf('.'));
+				return ' [' + dd + ']';
+			})
+	}
 
 
 	// add mouseover for subs
