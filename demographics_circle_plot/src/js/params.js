@@ -11,10 +11,10 @@ function defineParams(){
 		this.arc = null;
 		this.arc2 = null;
 
-		this.arc1Width = 70;
-		this.arc2Width = 0;
-		// this.arc1Width = 50;
-		// this.arc2Width = 20;
+		// this.arc1Width = 70;
+		// this.arc2Width = 0;
+		this.arc1Width = 50;
+		this.arc2Width = 20;
 		this.diameter = 700;
 		this.outerWidth = 120;
 		this.xOffset = 300;

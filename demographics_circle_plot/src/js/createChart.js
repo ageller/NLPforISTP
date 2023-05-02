@@ -121,7 +121,7 @@ function drawArcs(drawDepts = true, addLabels = true){
 	})
 
 
-
+    console.log('drawDepts', drawDepts)
 	if (drawDepts && params.arc2Width > 0){
 
 		//draw the arcs
@@ -276,7 +276,7 @@ function drawMultiRibbons(){
 		}
 	});
 	params.sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.05, 1]);
-	// var sizeAlpha = d3.scalePow().exponent(1.5).domain([minSize, maxSize]).range([0.02, 1]);
+	// params.sizeAlpha = d3.scalePow().exponent(0.25).domain([minSize, maxSize]).range([0.05, 1]);
 	params.sizeRadius = d3.scaleLinear().domain([minSize, maxSize]).range([innerRadius*0.1, innerRadius*0.6]);
 
 	// draw the paths
@@ -477,11 +477,13 @@ defineParams();
 createSVG();
 //d3.json("src/data/PHY130-3-02_SPR2023_circle_data.json", function(error, data) {
 d3.json("src/data/ISTP_demographics_combined_circle_data.json", function(error, data) {
-		if (error) throw error;
+// d3.json("src/data/ISTP_demographics_facilitator_circle_data.json", function(error, data) {
+    if (error) throw error;
 
 	params.data = data;
 
-	drawArcs();
+    // drawArcs(false, false)
+    drawArcs(true, true)
 	drawMultiRibbons();
 
 });
