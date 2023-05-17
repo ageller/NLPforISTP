@@ -275,8 +275,9 @@ function drawMultiRibbons(){
 			minSize = Math.min(minSize, d.size);
 		}
 	});
-	params.sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.05, 1]);
+	// params.sizeAlpha = d3.scaleLinear().domain([minSize, maxSize]).range([0.05, 1]);
 	// params.sizeAlpha = d3.scalePow().exponent(0.25).domain([minSize, maxSize]).range([0.05, 1]);
+	params.sizeAlpha = d3.scalePow().exponent(0.01).domain([minSize, maxSize]).range([0.2, 1]);
 	params.sizeRadius = d3.scaleLinear().domain([minSize, maxSize]).range([innerRadius*0.1, innerRadius*0.6]);
 
 	// draw the paths
@@ -476,7 +477,9 @@ function exportPDF(){
 defineParams();
 createSVG();
 //d3.json("src/data/PHY130-3-02_SPR2023_circle_data.json", function(error, data) {
-d3.json("src/data/ISTP_demographics_combined_circle_data.json", function(error, data) {
+// d3.json("src/data/ISTP_demographics_combined_circle_data.json", function(error, data) {
+// d3.json("src/data/ISTP_demographics_combined_circle_data_STEMR1faculty.json", function(error, data) {
+d3.json("src/data/ISTP_demographics_participant_circle_data_STEMR1faculty.json", function(error, data) {
 // d3.json("src/data/ISTP_demographics_facilitator_circle_data.json", function(error, data) {
     if (error) throw error;
 
