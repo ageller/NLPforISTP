@@ -1010,7 +1010,7 @@ def plotKmeanMetrics(sse, elbow = None):
 
     return f,ax
 
-def runKmeans(tfidf_vector, tfidf_vectorizer, df, num_clusters = 5, column_number = 1, num_words_for_label = 5, n_init = 5, lsa_vectorizer = None, lsa_vector = None, use_lsa = False):
+def runKmeans(tfidf_vector, tfidf_vectorizer, df, num_clusters = 5, column_number = 1, num_words_for_label = 5, n_init = 5, lsa_vectorizer = None, lsa_vector = None, use_lsa = False, random_seed = None):
     '''
     run the k-means clustering analysis using a TF-IDF vector
 
@@ -1025,6 +1025,7 @@ def runKmeans(tfidf_vector, tfidf_vectorizer, df, num_clusters = 5, column_numbe
     lsa_vectorizer : (lsa vectorizer, optional) from getTFIDFvector
     lsa_vector : (array, optional) getTFIDFvector
     use_lsa : (boolean, optional) whether or not to use the lsa vector
+    random_seed : (integer, optional) random seed
     '''
 
     vector = tfidf_vector
@@ -1042,7 +1043,7 @@ def runKmeans(tfidf_vector, tfidf_vectorizer, df, num_clusters = 5, column_numbe
         silhouette = {}
         km_models = {}
         for k in num_clusters:
-            km = KMeans(n_clusters = k, max_iter = 1000, n_init = n_init)
+            km = KMeans(n_clusters = k, max_iter = 1000, n_init = n_init, random_state = random_seed)
             kmeans = km.fit(vector)
             km_models[k] = km
             sse[k] = kmeans.inertia_
@@ -1076,42 +1077,41 @@ def runKmeans(tfidf_vector, tfidf_vectorizer, df, num_clusters = 5, column_numbe
 
 
     # Label each cluster with the word(s) that all of its entries have in common
-    clusters = result['cluster'].unique()
+    clusters = np.sort(result['cluster'].unique())
     labels = []
 
     # from here : https://scikit-learn.org/stable/auto_examples/text/plot_document_clustering.html
     # but this doesn't seem to make sense with the sentences I'm picking out...
-    # if (use_lsa):
-    #     original_space_centroids = lsa_vectorizer[0].inverse_transform(km_models[n_clusters].cluster_centers_)               
-    # else:
-    #     original_space_centroids = km_models[n_clusters].cluster_centers_
-    # order_centroids = original_space_centroids.argsort()[:, ::-1]
-    # terms = tfidf_vectorizer.get_feature_names_out() 
-    # for i in range(len(clusters)):
-    #     centroid_words = []
-    #     for ind in order_centroids[i, :num_words_for_label]:
-    #         centroid_words.append(terms[ind])
-    #         print(i, original_space_centroids[i, ind], terms[ind])
-    #     labels.append(', '.join(centroid_words))
+    if (use_lsa):
+        original_space_centroids = lsa_vectorizer[0].inverse_transform(km_models[n_clusters].cluster_centers_)               
+    else:
+        original_space_centroids = km_models[n_clusters].cluster_centers_
 
-    # old method, counting most frequent words (and matches my sentence method below)
+    terms = tfidf_vectorizer.get_feature_names_out() 
     for i in range(len(clusters)):
-        subset = result[result['cluster'] == clusters[i]]
-        exclude = [result.columns[j] for j in range(column_number + 1)] + ['cluster']
-        subset_words = subset.drop(exclude, axis = 1)
+        centroid_words = []
+        # take the largest values along the term axes
+        dist = original_space_centroids[i]
+        order_dist = dist.argsort()[::-1]
+        for ind in order_dist[:num_words_for_label]:
+            centroid_words.append(terms[ind])
+        labels.append(', '.join(centroid_words))
 
-        # count the number of times each word appears and take the top N
-        count = subset_words.astype(bool).sum(axis = 0).sort_values(ascending = False)
-        words = ', '.join(count[0:num_words_for_label].index)
-        labels.append(words)
+    # # old method, counting most frequent words (and matches my sentence method below)
+    # for i in range(len(clusters)):
+    #     subset = result[result['cluster'] == clusters[i]]
+    #     exclude = [result.columns[j] for j in range(column_number + 1)] + ['cluster']
+    #     subset_words = subset.drop(exclude, axis = 1)
+
+    #     # count the number of times each word appears and take the top N
+    #     count = subset_words.astype(bool).sum(axis = 0).sort_values(ascending = False)
+    #     words = ', '.join(count[0:num_words_for_label].index)
+    #     print("original", i, words)
+    #     labels.append(words)
 
 
-
-    labels_table = pd.DataFrame(zip(clusters,labels), columns=['cluster','label']).sort_values('cluster')
+    labels_table = pd.DataFrame(zip(clusters,labels), columns=['cluster','label'])#.sort_values('cluster')
     # result_labelled = pd.merge(result,labels_table,on = 'cluster',how = 'left')
-
-
-    labels_table
 
     return km_models, sse, homogeneity, completeness, v_measure, adjusted_rand, silhouette, n_clusters, result, labels_table 
 
@@ -1418,7 +1418,7 @@ def runNLPPipeline(filename = None, df = None, sheet = None, column_number = 1, 
         if (kmeans_use_lsa):
             n_init = 1
 
-        km_models, km_sse, km_homogeneity, km_completeness, km_v_measure, km_adjusted_rand, km_silhouette,km_n_clusters, km_result_table, km_labels_table  = runKmeans(tfidf_vector, tfidf_vectorizer, df, num_clusters = num_topics,  column_number = column_number, num_words_for_label = kmeans_num_words_for_label, n_init = n_init, use_lsa = kmeans_use_lsa, lsa_vectorizer = lsa_vectorizer, lsa_vector = lsa_vector)
+        km_models, km_sse, km_homogeneity, km_completeness, km_v_measure, km_adjusted_rand, km_silhouette,km_n_clusters, km_result_table, km_labels_table  = runKmeans(tfidf_vector, tfidf_vectorizer, df, num_clusters = num_topics,  column_number = column_number, num_words_for_label = kmeans_num_words_for_label, n_init = n_init, use_lsa = kmeans_use_lsa, lsa_vectorizer = lsa_vectorizer, lsa_vector = lsa_vector, random_seed = random_seed)
 
         print(f'  -- The best k-means model has {km_n_clusters} clusters.')
 
