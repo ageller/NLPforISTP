@@ -48,7 +48,9 @@ def preprocess(text, additional_stopwords = [''], wlen = 4, stem = True):
     wlen : (integer, optional) minimum word length (any words < wlen will be excluded)
     stem : (boolean, optional) whether to apply stemming
     '''
-    
+    if (len(text) == 0):
+        return ['']
+
     # define the lemmatizer, stemmer and stopwords
     wnl = nltk.stem.WordNetLemmatizer()
     stemmer = nltk.stem.SnowballStemmer('english')
@@ -69,8 +71,8 @@ def preprocess(text, additional_stopwords = [''], wlen = 4, stem = True):
             w = wnl.lemmatize(word)
             #print(word, wnl.lemmatize(word), stemmer.stem(word), stemmer.stem(w))
             if (stem):# and not w.endswith('e')):
-                processed.append(stemmer.stem(w))
-            else:
+                w = stemmer.stem(w)
+            if (w not in processed):
                 processed.append(w)
     
     return processed
@@ -1464,3 +1466,245 @@ def runNLPPipeline(filename = None, df = None, sheet = None, column_number = 1, 
                 "best_index": km_n_clusters
             }
         }
+
+def separate_into_predefined_categories(categories_dict = None, filename = None, df = None, sheet = None, column_number = 1, additional_stopwords = [''], wlen = 3, stem = True, no_below = 1, no_above = 1, keep_n = int(1e10), figname = None):
+    '''
+    Separate the answers from a survey into predefined categories, based on word counts and density
+
+    arguments
+    categories_dict : (dict, required) dict containing category names and associated words
+    filename : (string, optional) path to the file that stores the data, if sheet is supplied this is assumed to be an Excel file, otherwise it is assumes to be a csv file (if the filename is None, then df must be supplied)
+    sheet : (string, optional) if supplying an Excel file, this gives the sheet name 
+    df : (pandas DataFrame, optional) if not None, no file will be read in and this dataFrame will be used
+    column_number : (integer, optional) the column number for the specific question (supplying a number is easier because the column name is usualy the question text)
+
+    additional_stopwords : (list of strings, optional) a list of strings containing words that should be removed from text, other than the standard stopwords
+    wlen : (integer, optional) minimum word length (any words < wlen will be excluded)
+    stem : (boolean, optional) whether to apply stemming
+
+    no_below : (integer, optional) filtering to remove words that apper less than no_below times (typical value may be 15)
+    no_above : (float, optional) filtering to remove words that appear in more than no_above (fraction) of all documents (tpyical value may be 1; don't use)
+    keep_n : (integer, optional) number of words to keep (typical value may be 1e5)
+
+    figname : (string, optional) figure file name
+    '''
+
+    print(f'  -- Separating into pre-define categories --')
+
+    processed_categories = {}
+    for key in categories_dict:
+        processed_categories[key] = preprocess(
+            categories_dict[key], additional_stopwords = additional_stopwords, wlen = wlen, stem = stem
+        )
+    categories_names = np.array(list(processed_categories.keys()))
+    print(categories_names)
+
+    # read in the data
+    if (df is None):
+        print(f'  -- Reading data from file: "{filename}" --')
+        if (sheet is None):
+            df = pd.read_csv(filename)
+            sheet = 'plot' # for naming the figures
+        else:
+            print(f'  -- Using sheet: "{sheet}"" --')
+            df = pd.read_excel(filename, sheet)
+
+
+    # for each answer, try to divide into chunks of "gained confidence" and "still gaining confidence"
+    # this really should have been split into two questions!
+    results_df = df.copy()
+    columns = results_df.columns.to_list()
+
+    gained_list = ['' for x in range(len(df))]
+    gaining_list = ['' for x in range(len(df))]
+    neither_list = ['' for x in range(len(df))]
+    for i, row in df.iterrows():
+        answer = re.sub(r'[^\w\s]', '', (unicodedata.normalize('NFKD', row[columns[1]])
+            .encode('ascii', 'ignore')
+            .decode('utf-8', 'ignore')
+            .lower()))
+
+        words = np.array(answer.split(' '))
+        igained_start = -1
+        igaining_start = -1
+
+        gained = []
+        gaining = []
+        neither = []
+        for k, w in enumerate(words):
+            if (k < len(words) - 2):
+                if ( 
+                        (w == 'increasing') or 
+                        (w == 'gaining') or 
+                        (w + words[k + 1] == 'lessconfident') or 
+                        (w + words[k + 1] == 'notconfident') or 
+                        (w + words[k + 1] == 'amstill') or 
+                        (w + words[k + 1] == 'imstill') or
+                        (w + words[k + 1] == 'stillneed')
+                ):
+                    if (igaining_start < 0): 
+                        igaining_start = k
+                    if (igained_start >= 0):
+                        gained.extend([x + igained_start for x in range(k - igained_start)])
+                        igained_start = -1
+                        
+                elif ( (
+                        (w == 'increased') or 
+                        (w == 'gained') or 
+                        (w == 'confident') or 
+                        (w + words[k + 1] == 'nowfeel')
+                    ) and (k - igaining_start > 3 or igaining_start == -1)
+                ): 
+                    if (igained_start < 0):
+                        igained_start = k
+                    if (igaining_start >= 0):
+                        gaining.extend([x + igaining_start for x in range(k - igaining_start)])
+                        igaining_start = -1
+
+        if (igained_start > 0):
+            gained.extend([x + igained_start for x in range(len(words) - igained_start)])
+
+        if (igaining_start > 0):
+            gaining.extend([x + igaining_start for x in range(len(words) - igaining_start)])
+
+        for x in range(len(words)):
+            if (x not in gained and x not in gaining):
+                neither.append(x)
+
+        if (len(gained) > 0):
+            gained_list[i] = ' '.join(words[gained])
+        if (len(gaining) > 0):
+            gaining_list[i] = ' '.join(words[gaining])
+        if (len(neither) > 0):
+            neither_list[i] = ' '.join(words[neither])
+        
+    results_df['gained'] = gained_list
+    results_df['gaining'] = gaining_list
+    results_df['neither'] = neither_list
+
+
+    # for the "gained" and "gaining" groups, respectively, determine which categories they fit into
+    columns = results_df.columns.to_list()
+    cols = [2,3] #gained, gaining
+
+    for column_number in cols:
+        column_name = columns[column_number]
+        
+        # first create a bag of words for each survey answer
+        dictionary, bow_corpus, processed_answers = getBagOfWords(
+            results_df, column_number,  additional_stopwords = additional_stopwords, 
+            wlen = wlen, stem = stem, no_below = no_below, no_above = no_above, 
+            keep_n = keep_n
+        )
+
+        # loop through and count the words
+        # how do I normalize this to get a scale that will allow me to identify categories that the answers fall into
+        # I could divide by the number of words in the answer, but what if the answer is relevant to multiple categories?
+        # I will add a column that has the number of words in the answer so that I can use that later
+        categories_scores = np.zeros((len(df), len(processed_categories.keys())))
+        for i, a in enumerate(processed_answers):
+            for j, key in enumerate(categories_names):
+                for w in processed_categories[key]:
+                    if (w in a):
+                        categories_scores[i,j] += 1/len(a)
+
+        # maybe I can keep track of some kind of maximum density of words within a group based on a rolling window?
+        window = 10 # this is meant to represent some average sentence length in the answers (I could calculate that)
+        categories_density = np.zeros((len(df), len(processed_categories.keys())))
+        for i, a in enumerate(processed_answers):
+            for j, key in enumerate(categories_names):
+                density = 0
+                wuse = np.min([window, len(a)])
+                for k, wa in enumerate(a):
+                    if ((len(a) - k) >= wuse):
+                        wlist = a[k:(k + wuse)]
+                        d = 0
+                        for w in processed_categories[key]:
+                            if (w in wlist):
+                                d += 1/len(wlist)
+                        density = np.max([density, d])
+                categories_density[i,j] = density
+
+        # add these counts to the dataframe
+        for j, key in enumerate(categories_names):
+            results_df[key + ' ' + column_name] = categories_scores[:, j]
+        for j, key in enumerate(categories_names):
+            results_df[key + ' ' + column_name + ' density'] = categories_density[:, j]
+
+
+    # TODO: impose some threshold to place in "Not specific"
+
+    # determine limits to select each category
+    def get_limits(keyString):
+        full_array = []
+        for j, key in enumerate(categories_names):
+            full_array.extend(results_df[key + keyString].to_list())
+        full_array = np.array(full_array)
+        full_array = full_array[np.where(np.array(full_array) > 0)]
+        return np.percentile(full_array, [50, 84.1, 99.8])
+
+    median_fraction_gained, one_sig_fraction_gained, three_sig_fraction_gained = get_limits(' gained')
+    print('median and 1sigma limit for gained fraction', median_fraction_gained, one_sig_fraction_gained)
+
+    median_fraction_gaining, one_sig_fraction_gaining, three_sig_fraction_gaining = get_limits(' gaining')
+    print('median and 1sigma limit for gaining fraction', median_fraction_gaining, one_sig_fraction_gaining)
+
+    median_density_gained, one_sig_density_gained, three_sig_density_gained = get_limits(' gained density')
+    print('median and 1sigma limit for gained density', median_density_gained, one_sig_density_gained)
+
+    median_density_gaining, one_sig_density_gaining, three_sig_density_gaining = get_limits(' gaining density')
+    print('median and 1sigma limit for gaining density', median_density_gaining, one_sig_density_gaining)
+
+    # get the numbers of answers that have a given category above some threshold
+    # there's probably a faster way to do this!
+    category_numbers_gained = {}
+    category_numbers_gaining = {}
+    for j, key in enumerate(categories_names):
+        category_numbers_gained[key] = 0
+        category_numbers_gaining[key] = 0
+
+    frac_threshold_gained = one_sig_fraction_gained
+    dens_threshold_gained = one_sig_density_gained
+    frac_threshold_gaining = one_sig_fraction_gaining
+    dens_threshold_gaining = one_sig_density_gaining
+    for key in categories_names:
+        for i, row in results_df.iterrows():
+            if ((row[key + ' gained'] > frac_threshold_gained) or (row[key + ' gained density'] > dens_threshold_gained)):
+                category_numbers_gained[key] += 1
+            if ((row[key + ' gaining'] > frac_threshold_gaining) or (row[key + ' gaining density'] > dens_threshold_gaining)):
+                category_numbers_gaining[key] += 1
+
+    
+    # create a histogram plot
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    figw = 5
+    figh = len(categories_names)*0.9
+    f,ax = plt.subplots(figsize = (figw, figh))
+    data_gained = np.array(list(category_numbers_gained.values()))
+    data_gaining = np.array(list(category_numbers_gaining.values()))
+    srt_gained = np.argsort(data_gained)
+
+    x = np.arange(len(categories_names))
+    rects_gained = ax.barh(x + 0.4, data_gained[srt_gained], height = 0.4, color = colors[0], label = 'Gained Confidence')
+    rects_gaining = ax.barh(x, data_gaining[srt_gained], height = 0.4, color = colors[1], label = 'Still Gaining Confidence')
+    ax.bar_label(rects_gained, padding = 3, color = colors[0])
+    ax.bar_label(rects_gaining, padding = 3, color = colors[1])
+    ax.set_yticks(x + 0.2, categories_names[srt_gained])
+
+    #ax.set_xlim(0,60)
+    ax.legend(loc = 'lower right')
+
+    # remove all the axes, ticks and lower x label
+    # aoff = ['right', 'left', 'top', 'bottom']
+    aoff = ['right', 'top', 'bottom']
+    for x in aoff:
+        ax.spines[x].set_visible(False)
+    ax.tick_params(length=0)
+    ax.set_xticklabels([' ']*len(data_gained))
+
+    if (figname is None):
+        figname = 'categories_histogram_' + sheet.replace(' ','') + '.png'
+    print(f'  -- Saving categories histogram plot to: "{figname}" --')
+    f.savefig(figname, bbox_inches = 'tight')
+
+    return results_df, category_numbers_gained, category_numbers_gaining
