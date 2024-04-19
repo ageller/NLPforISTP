@@ -6,6 +6,7 @@ __pycache__
 
 # data files
 data/
+demographics_circle_plot/src/data
 .csv
 .json
 .xls
